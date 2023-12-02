@@ -70,17 +70,15 @@ class RelativePositionBias(nn.Module):
 
 
 class T5Block(nn.Module):
-    def __init__(
-        self, dim: int, n_heads: int, mlp_dim: int, head_dim: int = 64, dropout: float = 0.0, decoder: bool = False
-    ) -> None:
+    def __init__(self, dim: int, n_heads: int, mlp_dim: int, dropout: float = 0.0, decoder: bool = False) -> None:
         super().__init__()
         self.sa_norm = LayerNorm(dim)
-        self.sa = MHA(dim, head_dim, n_heads, bias=False, dropout=dropout)
+        self.sa = MHA(dim, n_heads=n_heads, head_dim=64, bias=False, dropout=dropout)
 
         self.decoder = decoder
         if decoder:
             self.ca_norm = LayerNorm(dim)
-            self.ca = MHA(dim, head_dim, n_heads, bias=False, dropout=dropout)
+            self.ca = MHA(dim, n_heads=n_heads, head_dim=64, bias=False, dropout=dropout)
 
         self.mlp_norm = LayerNorm(dim)
         self.mlp = nn.Sequential(
@@ -105,16 +103,13 @@ class T5Stack(nn.Module):
         n_heads: int,
         n_layers: int,
         mlp_dim: int,
-        head_dim: int = 64,
         dropout: float = 0.0,
         decoder: bool = False,
     ) -> None:
         super().__init__()
         self.in_drop = nn.Dropout(dropout)
         self.attn_bias = RelativePositionBias(n_heads, 32, 128)
-        self.layers = nn.Sequential(
-            *[T5Block(dim, n_heads, mlp_dim, head_dim, dropout, decoder) for _ in range(n_layers)]
-        )
+        self.layers = nn.Sequential(*[T5Block(dim, n_heads, mlp_dim, dropout, decoder) for _ in range(n_layers)])
         self.norm = LayerNorm(dim)
         self.out_drop = nn.Dropout(dropout)
         self.decoder = decoder
@@ -137,14 +132,13 @@ class T5Model(nn.Module):
         n_heads: int,
         n_layers: int,
         mlp_dim: int,
-        head_dim: int = 64,
         dropout: float = 0.0,
         vocab_size: int = 32128,
     ) -> None:
         super().__init__()
         self.embed = nn.Embedding(vocab_size, dim)
-        self.encoder = T5Stack(dim, n_heads, n_layers, mlp_dim, head_dim, dropout, False)
-        self.decoder = T5Stack(dim, n_heads, n_layers, mlp_dim, head_dim, dropout, True)
+        self.encoder = T5Stack(dim, n_heads, n_layers, mlp_dim, dropout, False)
+        self.decoder = T5Stack(dim, n_heads, n_layers, mlp_dim, dropout, True)
         self.classifier = nn.Linear(dim, vocab_size, False)
 
     def encode(self, x: Tensor) -> Tensor:

@@ -6,10 +6,22 @@ from torch import Tensor, nn
 
 class MHA(nn.Module):
     def __init__(
-        self, d_model: int, head_dim: int = 64, n_heads: int | None = None, bias: bool = True, dropout: float = 0.0
+        self,
+        d_model: int,
+        n_heads: int | None = None,
+        head_dim: int | None = None,
+        bias: bool = True,
+        dropout: float = 0.0,
     ) -> None:
         # small T5-small use n_heads * head_dim < d_model
-        n_heads = n_heads or d_model // head_dim
+        # small ViT use head_dim < 64
+        if head_dim is None and n_heads is None:
+            head_dim = 64
+            n_heads = d_model // head_dim
+        elif head_dim is None:
+            head_dim = d_model // n_heads
+        elif n_heads is None:
+            n_heads = d_model // head_dim
         super().__init__()
         self.q_proj = nn.Linear(d_model, n_heads * head_dim, bias)
         self.k_proj = nn.Linear(d_model, n_heads * head_dim, False)
@@ -56,7 +68,7 @@ class EncoderBlock(nn.Module):
     ) -> None:
         super().__init__()
         self.norm1 = nn.LayerNorm(d_model, eps=layernorm_eps)
-        self.mha = MHA(d_model, head_dim, bias=bias, dropout=dropout)
+        self.mha = MHA(d_model, head_dim=head_dim, bias=bias, dropout=dropout)
         self.norm2 = nn.LayerNorm(d_model, eps=layernorm_eps)
         self.mlp = MLP(d_model, int(d_model * mlp_ratio), dropout)
         self.pre_norm = pre_norm
