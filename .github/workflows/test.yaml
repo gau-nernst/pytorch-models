@@ -16,8 +16,8 @@ jobs:
       - run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install requests pytest transformers librosa
-          pip install openai-whisper @ git+https://github.com/openai/whisper.git --no-deps
-          pip install encodec @ git+https://github.com/facebookresearch/encodec.git --no-deps
+          pip install git+https://github.com/openai/whisper.git --no-deps
+          pip install git+https://github.com/facebookresearch/encodec.git --no-deps
 
       - name: Run tests
         run: pytest -v
