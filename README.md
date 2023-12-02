@@ -30,7 +30,7 @@ For `Wav2Vec2`, `SEW`, and `Data2VecAudio` (weights are from HF):
 
 ```python
 import torch
-from audio_models import Wav2Vec2
+from pytorch_models.audio import Wav2Vec2
 
 model = Wav2Vec2.from_hf("facebook/wav2vec2-xls-r-300m", pretrained=True)  # also compatible with HuBERT and MMS weights
 outputs = model(torch.randn(2, 16000))  # only supports mono audio. no channel dim.
@@ -40,7 +40,7 @@ For `WhisperEncoder` (weights are from https://github.com/openai/whisper):
 
 ```python
 import torch
-from audio_models.whisper import WhisperEncoder, WhisperPreprocessor
+from pytorch_models.audio import WhisperEncoder, WhisperPreprocessor
 
 preprocessor = WhisperPreprocessor()
 model = WhisperEncoder.from_openai("tiny.en", pretrained=True)
@@ -54,7 +54,7 @@ For `EnCodec` (weights are from https://github.com/facebookresearch/encodec):
 
 ```python
 import torch
-from audio_models import EnCodec
+from pytorch_models.audio import EnCodec
 
 model = EnCodec.from_facebook("24khz", pretrained=True)  # 48khz is also available
 
