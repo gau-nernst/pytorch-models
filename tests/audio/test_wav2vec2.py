@@ -33,7 +33,7 @@ def test_compile(stem_legacy: bool, x: Tensor):
 )
 def test_from_hf(model_id: str, x: Tensor):
     m = Wav2Vec2.from_hf(model_id, pretrained=True).eval()
-    m_hf = AutoModel.from_pretrained(model_id).eval()
+    m_hf = AutoModel.from_pretrained(model_id, gradient_checkpointing=False).eval()
 
     actual = m(x)
     expected = m_hf(x).last_hidden_state
