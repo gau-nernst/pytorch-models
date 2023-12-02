@@ -14,7 +14,7 @@ class MHA(nn.Module):
         self.q_proj = nn.Linear(d_model, n_heads * head_dim, bias)
         self.k_proj = nn.Linear(d_model, n_heads * head_dim, False)
         self.v_proj = nn.Linear(d_model, n_heads * head_dim, bias)
-        self.out_proj = nn.Linear(d_model, n_heads * head_dim, bias)
+        self.out_proj = nn.Linear(n_heads * head_dim, d_model, bias)
         self.n_heads = n_heads
         self.head_dim = head_dim
         self.dropout = dropout

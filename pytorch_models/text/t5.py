@@ -6,8 +6,9 @@ import math
 from pathlib import Path
 
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
+
+from ..transformer import MHA
 
 
 # LayerNorm without mean subtraction and learnable bias
@@ -34,33 +35,6 @@ class GEGLU(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.act(self.w(x)) * self.v(x)
-
-
-class Attention(nn.Module):
-    def __init__(self, dim: int, n_heads: int, head_dim: int = 64, dropout: float = 0.0) -> None:
-        super().__init__()
-        self.q_proj = nn.Linear(dim, n_heads * head_dim, False)
-        self.k_proj = nn.Linear(dim, n_heads * head_dim, False)
-        self.v_proj = nn.Linear(dim, n_heads * head_dim, False)
-        self.out_proj = nn.Linear(n_heads * head_dim, dim, False)
-        self.dropout = dropout
-        self.n_heads = n_heads
-        self.head_dim = head_dim
-
-    def forward(
-        self, q: Tensor, k: Tensor | None = None, v: Tensor | None = None, attn_bias: Tensor | None = None
-    ) -> Tensor:
-        k = q if k is None else k
-        v = k if v is None else v
-
-        q = self.q_proj(q).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)  # (*, n_heads, L, head_dim)
-        k = self.k_proj(k).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)
-        v = self.v_proj(v).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)
-
-        dropout = self.dropout if self.training else 0.0
-        out = F.scaled_dot_product_attention(q, k, v, attn_bias, dropout)
-        out = self.out_proj(out.transpose(-2, -3).flatten(-2))
-        return F.dropout(out, self.dropout, self.training)
 
 
 class RelativePositionBias(nn.Module):
@@ -101,12 +75,12 @@ class T5Block(nn.Module):
     ) -> None:
         super().__init__()
         self.sa_norm = LayerNorm(dim)
-        self.sa = Attention(dim, n_heads, head_dim, dropout)
+        self.sa = MHA(dim, head_dim, n_heads, bias=False, dropout=dropout)
 
         self.decoder = decoder
         if decoder:
             self.ca_norm = LayerNorm(dim)
-            self.ca = Attention(dim, n_heads, head_dim, dropout)
+            self.ca = MHA(dim, head_dim, n_heads, bias=False, dropout=dropout)
 
         self.mlp_norm = LayerNorm(dim)
         self.mlp = nn.Sequential(
