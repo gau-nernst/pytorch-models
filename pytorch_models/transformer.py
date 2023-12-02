@@ -42,11 +42,12 @@ class EncoderBlock(nn.Module):
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
         pre_norm: bool = True,
+        layernorm_eps: float = 1e-5,
     ) -> None:
         super().__init__()
-        self.norm1 = nn.LayerNorm(d_model)
+        self.norm1 = nn.LayerNorm(d_model, eps=layernorm_eps)
         self.mha = MHA(d_model, head_dim, bias, dropout)
-        self.norm2 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model, eps=layernorm_eps)
         self.mlp = MLP(d_model, int(d_model * mlp_ratio), dropout)
         self.pre_norm = pre_norm
 
@@ -70,12 +71,13 @@ class Encoder(nn.Module):
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
         pre_norm: bool = True,
+        layernorm_eps: float = 1e-5,
     ) -> None:
         super().__init__()
         self.layers = nn.Sequential()
         for _ in range(n_layers):
-            self.layers.append(EncoderBlock(d_model, head_dim, bias, mlp_ratio, dropout, pre_norm))
-        self.norm = nn.LayerNorm(d_model)
+            self.layers.append(EncoderBlock(d_model, head_dim, bias, mlp_ratio, dropout, pre_norm, layernorm_eps))
+        self.norm = nn.LayerNorm(d_model, eps=layernorm_eps)
         self.pre_norm = pre_norm
 
     def forward(self, x: Tensor) -> Tensor:
