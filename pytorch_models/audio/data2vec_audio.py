@@ -9,26 +9,13 @@ from .wav2vec2 import FeatureEncoder, LayerNorm1d, Wav2Vec2
 
 
 class Data2VecAudio(Wav2Vec2):
-    def __init__(
-        self,
-        n_layers: int,
-        d_model: int,
-        stem_dims: tuple[int, ...] = (512,) * 7,
-        stem_kernels: tuple[int, ...] = (10,) + (3,) * 4 + (2,) * 2,
-        stem_strides: tuple[int, ...] = (5,) + (2,) * 6,
-        stem_bias: bool = False,
-        stem_legacy: bool = False,
-        pe_kernel: int = 19,
-        pe_groups: int = 16,
-        dropout: float = 0.0,
-        pre_norm: bool = False,
-    ) -> None:
-        assert not stem_legacy
-        assert not pre_norm
-        nn.Module.__init__(self)
-        self.feature_encoder = FeatureEncoder(stem_dims, stem_kernels, stem_strides, stem_bias, dropout, stem_legacy)
+    PE_KERNEL = 19
 
-        in_dim = stem_dims[-1]
+    def __init__(self, n_layers: int, d_model: int, stem_bias: bool = False, dropout: float = 0.0) -> None:
+        nn.Module.__init__(self)
+        self.feature_encoder = FeatureEncoder(self.STEM_DIMS, self.STEM_KERNELS, self.STEM_STRIDES, stem_bias, dropout)
+
+        in_dim = self.STEM_DIMS[-1]
         self.proj = nn.Sequential(nn.LayerNorm(in_dim))
         if in_dim != d_model:
             self.proj.append(nn.Linear(in_dim, d_model))
@@ -36,16 +23,18 @@ class Data2VecAudio(Wav2Vec2):
         self.pe_conv = nn.Sequential()
         for _ in range(5):
             layer = nn.Sequential(
-                nn.Conv1d(d_model, d_model, pe_kernel, padding=pe_kernel // 2, groups=pe_groups),
+                nn.Conv1d(d_model, d_model, self.PE_KERNEL, padding=self.PE_KERNEL // 2, groups=self.PE_GROUPS),
                 LayerNorm1d(d_model, elementwise_affine=False),
                 nn.GELU(),
             )
             self.pe_conv.append(layer)
 
-        self.transformer = Encoder(n_layers, d_model, dropout=dropout, pre_norm=pre_norm)
+        self.transformer = Encoder(n_layers, d_model, dropout=dropout, pre_norm=False)
 
     @torch.no_grad()
     def load_hf_state_dict(self, state_dict: dict[str, Tensor]) -> None:
+        state_dict = state_dict.copy()  # shallow copy
+
         def copy_w(module: nn.Conv1d | nn.Linear | nn.LayerNorm, prefix: str):
             module.weight.copy_(state_dict.pop(prefix + ".weight"))
             if module.bias is not None:

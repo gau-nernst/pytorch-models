@@ -9,28 +9,17 @@ from .wav2vec2 import Wav2Vec2
 
 
 class SEW(Wav2Vec2):
+    STEM_DIMS = (64,) + (128,) * 4 + (256,) * 4 + (512,) * 4
+    STEM_KERNELS = (10,) + (3, 1) * 4 + (2, 1) * 2
+    STEM_STRIDES = (5,) + (2, 1) * 6
+
+    PE_KERNEL = 31
+
     def __init__(
-        self,
-        n_layers: int,
-        d_model: int,
-        stem_dims: tuple[int, ...] = (64,) + (128,) * 4 + (256,) * 4 + (512,) * 4,
-        stem_kernels: tuple[int, ...] = (10,) + (3, 1) * 4 + (2, 1) * 2,
-        stem_strides: tuple[int, ...] = (5,) + (2, 1) * 6,
-        stem_bias: bool = True,
-        stem_legacy: bool = True,
-        pe_kernel: int = 31,
-        pe_groups: int = 16,
-        dropout: float = 0.0,
-        pre_norm: bool = False,
+        self, n_layers: int, d_model: int, stem_bias: bool = True, stem_legacy: bool = True, dropout: float = 0.0
     ) -> None:
         assert stem_legacy
-        assert not pre_norm
-        # fmt: off
-        super().__init__(
-            n_layers, d_model, stem_dims, stem_kernels, stem_strides, stem_bias, 
-            stem_legacy, pe_kernel, pe_groups, dropout, pre_norm,
-        )
-        # fmt: on
+        super().__init__(n_layers, d_model, stem_bias, stem_legacy, dropout, False)
         self.pe_conv[1].stride = 2
         self.upsample = nn.Sequential(nn.Linear(d_model, d_model * 2), nn.GELU())
 
@@ -50,6 +39,8 @@ class SEW(Wav2Vec2):
 
     @torch.no_grad()
     def load_hf_state_dict(self, state_dict: dict[str, Tensor]) -> None:
+        state_dict = state_dict.copy()  # shallow copy
+
         def copy_w(module: nn.Conv1d | nn.Linear | nn.LayerNorm | nn.BatchNorm1d, prefix: str):
             module.weight.copy_(state_dict.pop(prefix + ".weight"))
             if module.bias is not None:
