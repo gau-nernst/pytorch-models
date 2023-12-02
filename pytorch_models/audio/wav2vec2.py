@@ -105,9 +105,9 @@ class Wav2Vec2(nn.Module):
     @torch.no_grad()
     def load_hf_state_dict(self, state_dict: dict[str, Tensor]) -> None:
         def copy_w(module: nn.Conv1d | nn.Linear | nn.LayerNorm | nn.InstanceNorm1d, prefix: str):
-            module.weight.copy_(state_dict.pop(prefix + ".weight"))
+            module.weight.copy_(state_dict.pop(f"{prefix}.weight"))
             if module.bias is not None:
-                module.bias.copy_(state_dict.pop(prefix + ".bias"))
+                module.bias.copy_(state_dict.pop(f"{prefix}.bias"))
 
         for i, conv in enumerate(self.feature_encoder):
             prefix = f"feature_extractor.conv_layers.{i}"
@@ -129,11 +129,14 @@ class Wav2Vec2(nn.Module):
         copy_w(self.transformer.norm, "encoder.layer_norm")
         for i, block in enumerate(self.transformer.layers):
             prefix = f"encoder.layers.{i}"
+            state_dict.pop(f"{prefix}.attention.k_proj.bias")
+
             copy_w(block.mha.q_proj, prefix + ".attention.q_proj")
             copy_w(block.mha.k_proj, prefix + ".attention.k_proj")
             copy_w(block.mha.v_proj, prefix + ".attention.v_proj")
             copy_w(block.mha.out_proj, prefix + ".attention.out_proj")
             copy_w(block.norm1, prefix + ".layer_norm")
+
             copy_w(block.mlp.linear1, prefix + ".feed_forward.intermediate_dense")
             copy_w(block.mlp.linear2, prefix + ".feed_forward.output_dense")
             copy_w(block.norm2, prefix + ".final_layer_norm")
