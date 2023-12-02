@@ -20,8 +20,6 @@ class SEW(Wav2Vec2):
         stem_legacy: bool = True,
         pe_kernel: int = 31,
         pe_groups: int = 16,
-        head_dim: int = 64,
-        mlp_ratio: float = 4.0,
         dropout: float = 0.0,
         pre_norm: bool = False,
     ) -> None:
@@ -30,7 +28,7 @@ class SEW(Wav2Vec2):
         # fmt: off
         super().__init__(
             n_layers, d_model, stem_dims, stem_kernels, stem_strides, stem_bias, 
-            stem_legacy, pe_kernel, pe_groups, head_dim, mlp_ratio, dropout, pre_norm,
+            stem_legacy, pe_kernel, pe_groups, dropout, pre_norm,
         )
         # fmt: on
         self.pe_conv[1].stride = 2

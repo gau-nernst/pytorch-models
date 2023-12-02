@@ -20,8 +20,6 @@ class Data2VecAudio(Wav2Vec2):
         stem_legacy: bool = False,
         pe_kernel: int = 19,
         pe_groups: int = 16,
-        head_dim: int = 64,
-        mlp_ratio: float = 4.0,
         dropout: float = 0.0,
         pre_norm: bool = False,
     ) -> None:
@@ -44,7 +42,7 @@ class Data2VecAudio(Wav2Vec2):
             )
             self.pe_conv.append(layer)
 
-        self.transformer = Encoder(n_layers, d_model, head_dim, True, mlp_ratio, dropout, pre_norm)
+        self.transformer = Encoder(n_layers, d_model, dropout=dropout, pre_norm=pre_norm)
 
     @torch.no_grad()
     def load_hf_state_dict(self, state_dict: dict[str, Tensor]) -> None:

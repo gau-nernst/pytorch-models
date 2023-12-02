@@ -59,7 +59,8 @@ class EncoderBlock(nn.Module):
     def __init__(
         self,
         d_model: int,
-        head_dim: int,
+        n_heads: int | None = None,
+        head_dim: int | None = None,
         bias: bool = True,
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
@@ -68,7 +69,7 @@ class EncoderBlock(nn.Module):
     ) -> None:
         super().__init__()
         self.norm1 = nn.LayerNorm(d_model, eps=layernorm_eps)
-        self.mha = MHA(d_model, head_dim=head_dim, bias=bias, dropout=dropout)
+        self.mha = MHA(d_model, n_heads, head_dim, bias, dropout)
         self.norm2 = nn.LayerNorm(d_model, eps=layernorm_eps)
         self.mlp = MLP(d_model, int(d_model * mlp_ratio), dropout)
         self.pre_norm = pre_norm
@@ -88,7 +89,8 @@ class Encoder(nn.Module):
         self,
         n_layers: int,
         d_model: int,
-        head_dim: int,
+        n_heads: int | None = None,
+        head_dim: int | None = None,
         bias: bool = True,
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
@@ -98,7 +100,9 @@ class Encoder(nn.Module):
         super().__init__()
         self.layers = nn.Sequential()
         for _ in range(n_layers):
-            self.layers.append(EncoderBlock(d_model, head_dim, bias, mlp_ratio, dropout, pre_norm, layernorm_eps))
+            self.layers.append(
+                EncoderBlock(d_model, n_heads, head_dim, bias, mlp_ratio, dropout, pre_norm, layernorm_eps)
+            )
         self.norm = nn.LayerNorm(d_model, eps=layernorm_eps)
         self.pre_norm = pre_norm
 

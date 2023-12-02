@@ -51,8 +51,6 @@ class Wav2Vec2(nn.Module):
         stem_legacy: bool = False,
         pe_kernel: int = 128,
         pe_groups: int = 16,
-        head_dim: int = 64,
-        mlp_ratio: float = 4.0,
         dropout: float = 0.0,
         pre_norm: bool = True,
     ) -> None:
@@ -69,7 +67,7 @@ class Wav2Vec2(nn.Module):
             nn.Conv1d(d_model, d_model, pe_kernel, groups=pe_groups),
             nn.GELU(),
         )
-        self.transformer = Encoder(n_layers, d_model, head_dim, True, mlp_ratio, dropout, pre_norm)
+        self.transformer = Encoder(n_layers, d_model, dropout=dropout, pre_norm=pre_norm)
 
     def forward(self, x: Tensor) -> Tensor:
         # x: (B, L)
@@ -85,12 +83,12 @@ class Wav2Vec2(nn.Module):
         config_url = f"https://huggingface.co/{model_id}/raw/main/config.json"
         config = json.loads(requests.get(config_url).content)
 
+        assert config["hidden_size"] == config["num_attention_heads"] * 64
         m = cls(
             n_layers=config["num_hidden_layers"],
             d_model=config["hidden_size"],
             stem_bias=config["conv_bias"],
             stem_legacy=config.get("feat_extract_norm", "layer") == "group",
-            head_dim=config["hidden_size"] // config["num_attention_heads"],
             pre_norm=config.get("do_stable_layer_norm", False),
         )
 
