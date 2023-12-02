@@ -1,0 +1,21 @@
+name: Test
+on:
+  push:
+    paths-ignore:
+      - README.md
+      - .gitignore
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v3
+        with:
+          python-version: "3.10"
+      - run: |
+          pip install torch==2.0.* --extra-index-url https://download.pytorch.org/whl/cpu
+          pip install .
+
+      - name: Run tests
+        run: pytest -v
