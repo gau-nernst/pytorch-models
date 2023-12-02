@@ -23,6 +23,8 @@ Available models:
 TODO:
 
 - AST / AudioMAE
+- Make models support unbatched inputs
+- Support loading EnCodec from AudioCraft
 
 ### Usage
 
