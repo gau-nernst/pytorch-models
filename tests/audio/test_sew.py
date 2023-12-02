@@ -11,6 +11,7 @@ def x():
     return torch.randn(2, 6400)
 
 
+@torch.no_grad()
 def test_forward(x: Tensor):
     m = SEW(2, 64)
     m(x)
@@ -22,6 +23,7 @@ def test_compile(x: Tensor):
     m_compiled(x).sum().backward()
 
 
+@torch.no_grad()
 @pytest.mark.parametrize("model_id", ("asapp/sew-tiny-100k",))
 def test_from_hf(model_id: str, x: Tensor):
     m = SEW.from_hf(model_id, pretrained=True).eval()

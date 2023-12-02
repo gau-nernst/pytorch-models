@@ -11,6 +11,7 @@ def x():
     return torch.randn(2, 6400)
 
 
+@torch.no_grad()
 def test_forward(x: Tensor):
     m = Wav2Vec2(2, 64)
     m(x)
@@ -23,6 +24,7 @@ def test_compile(stem_legacy: bool, x: Tensor):
     m_compiled(x).sum().backward()
 
 
+@torch.no_grad()
 @pytest.mark.parametrize(
     "model_id",
     (

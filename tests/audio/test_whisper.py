@@ -11,6 +11,7 @@ def x():
     return torch.randn(2, 80, 300)
 
 
+@torch.no_grad()
 def test_forward(x: Tensor):
     m = WhisperEncoder(2, 64)
     m(x)
@@ -22,6 +23,7 @@ def test_compile(x: Tensor):
     m_compiled(x).sum().backward()
 
 
+@torch.no_grad()
 @pytest.mark.parametrize("variant", ("tiny",))
 def test_from_openai(variant: str, x: Tensor):
     x = x.repeat(1, 1, 3000 // x.shape[2])

@@ -5,22 +5,32 @@ from torch import Tensor, nn
 
 
 class MHA(nn.Module):
-    def __init__(self, d_model: int, head_dim: int, bias: bool = True, dropout: float = 0.0) -> None:
+    def __init__(
+        self, d_model: int, head_dim: int = 64, n_heads: int | None = None, bias: bool = True, dropout: float = 0.0
+    ) -> None:
+        # small T5-small use n_heads * head_dim < d_model
+        n_heads = n_heads or d_model // head_dim
         super().__init__()
-        self.q_proj = nn.Linear(d_model, d_model, bias)
-        self.k_proj = nn.Linear(d_model, d_model, False)
-        self.v_proj = nn.Linear(d_model, d_model, bias)
-        self.out_proj = nn.Linear(d_model, d_model, bias)
+        self.q_proj = nn.Linear(d_model, n_heads * head_dim, bias)
+        self.k_proj = nn.Linear(d_model, n_heads * head_dim, False)
+        self.v_proj = nn.Linear(d_model, n_heads * head_dim, bias)
+        self.out_proj = nn.Linear(n_heads * head_dim, d_model, bias)
+        self.n_heads = n_heads
         self.head_dim = head_dim
         self.dropout = dropout
 
-    def forward(self, x: Tensor) -> Tensor:
-        q = self.q_proj(x).unflatten(-1, (-1, self.head_dim)).transpose(1, 2)  # (B, n_heads, L, head_dim)
-        k = self.k_proj(x).unflatten(-1, (-1, self.head_dim)).transpose(1, 2)
-        v = self.v_proj(x).unflatten(-1, (-1, self.head_dim)).transpose(1, 2)
+    def forward(
+        self, q: Tensor, k: Tensor | None = None, v: Tensor | None = None, attn_bias: Tensor | None = None
+    ) -> Tensor:
+        k = q if k is None else k
+        v = k if v is None else v
+
+        q = self.q_proj(q).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)  # (*, n_heads, L, head_dim)
+        k = self.k_proj(k).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)
+        v = self.v_proj(v).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)
 
         dropout = self.dropout if self.training else 0.0
-        out = F.scaled_dot_product_attention(q, k, v, dropout_p=dropout)
+        out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_bias, dropout_p=dropout)
         return self.out_proj(out.transpose(-2, -3).flatten(-2))
 
 
@@ -46,7 +56,7 @@ class EncoderBlock(nn.Module):
     ) -> None:
         super().__init__()
         self.norm1 = nn.LayerNorm(d_model, eps=layernorm_eps)
-        self.mha = MHA(d_model, head_dim, bias, dropout)
+        self.mha = MHA(d_model, head_dim, bias=bias, dropout=dropout)
         self.norm2 = nn.LayerNorm(d_model, eps=layernorm_eps)
         self.mlp = MLP(d_model, int(d_model * mlp_ratio), dropout)
         self.pre_norm = pre_norm

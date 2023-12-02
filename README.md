@@ -26,12 +26,14 @@ TODO:
 
 Available models:
 
-- [BERT](https://arxiv.org/abs/1810.04805)
+- [BERT](https://arxiv.org/abs/1810.04805) (all HF-compatible BERT)
+  - TODO: add tokenizer
+- [T5](https://arxiv.org/pdf/1910.10683) / [Flan-T5](https://arxiv.org/abs/2210.11416) (T5 1.1 + LM-adapted, mT5 + LM-adapted, Flan-T5)
+  - `msgpack` is required for loading pre-trained checkpoints. `sentencepiece` is required to use the tokenizer.
 
 TODO:
 
 - [RoBERTa](https://arxiv.org/abs/1907.11692)
-- [T5](https://arxiv.org/pdf/1910.10683) / [Flan-T5](https://arxiv.org/abs/2210.11416)
 - [GPT-1](https://cdn.openai.com/research-covers/language-unsupervised/language_understanding_paper.pdf)
 - [GPT-2](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf)
 
@@ -65,7 +67,33 @@ TODO:
 - [Pix2Struct](https://arxiv.org/abs/2210.03347)
 - BLIP?
 
-### Usage
+## Usage
+
+### Text
+
+```python
+import torch
+from pytorch_models.text import T5Model
+
+model = T5Model.create_model("small", checkpoint="flan_t5")
+tokenizer = T5Model.get_tokenizer("flan_t5")
+
+inputs = "Translate to German. What is your name?"
+input_ids = tokenizer.Encode(inputs, add_eos=True)
+input_ids = torch.tensor(input_ids)
+
+targets = "Welches ist Ihres Namen?"
+target_ids = [tokenizer.pad_id()] + tokenizer.Encode(targets, add_eos=True)
+target_ids = torch.tensor(target_ids)
+
+# the model supports inputs without batch dim
+encoded = model.encode(input_ids)  # call encoder
+decoded = model.decode(target_ids, encoded)  # call decoder
+
+decoded = model(input_ids, target_ids)  # same as above
+```
+
+### Audio
 
 For `Wav2Vec2`, `SEW`, and `Data2VecAudio` (weights are from HF):
 

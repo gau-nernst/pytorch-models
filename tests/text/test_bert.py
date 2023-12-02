@@ -11,6 +11,7 @@ def x():
     return torch.randint(2000, size=(1, 16))
 
 
+@torch.no_grad()
 def test_forward(x: Tensor):
     m = BERT(2000, 2, 128)
     m(x)
@@ -22,6 +23,7 @@ def test_compile(x: Tensor):
     m_compiled(x).sum().backward()
 
 
+@torch.no_grad()
 @pytest.mark.parametrize("model_tag", ("gaunernst/bert-tiny-uncased",))
 def test_from_hf(model_tag: str, x: Tensor):
     m = BERT.from_hf(model_tag, pretrained=True).eval()
