@@ -12,12 +12,12 @@ def x():
 
 
 def test_forward(x: Tensor):
-    m = BERT(2000, 2, 16)
+    m = BERT(2000, 2, 128)
     m(x)
 
 
 def test_compile(x: Tensor):
-    m = BERT(2000, 2, 16)
+    m = BERT(2000, 2, 128)
     m_compiled = torch.compile(m, fullgraph=True)
     m_compiled(x).sum().backward()
 
@@ -28,7 +28,7 @@ def test_from_hf(model_tag: str, x: Tensor):
     m_hf = BertModel.from_pretrained(model_tag).eval()
 
     actual = m(x)
-    expected = m_hf(x).last_hidden_states
+    expected = m_hf(x).last_hidden_state
 
     torch.testing.assert_close(actual, expected)
     # diff = (actual - expected).abs().mean()
