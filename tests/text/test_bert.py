@@ -22,7 +22,7 @@ def test_compile(x: Tensor):
     m_compiled(x).sum().backward()
 
 
-@pytest.mark.parametrize("model_tag", ("bert-tiny-uncased",))
+@pytest.mark.parametrize("model_tag", ("gaunernst/bert-tiny-uncased",))
 def test_from_hf(model_tag: str, x: Tensor):
     m = BERT.from_hf(model_tag, pretrained=True).eval()
     m_hf = BertModel.from_pretrained(model_tag).eval()
