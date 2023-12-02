@@ -40,36 +40,38 @@ class FeatureEncoder(nn.Sequential):
 
 
 class Wav2Vec2(nn.Module):
+    STEM_DIMS = (512,) * 7
+    STEM_KERNELS = (10,) + (3,) * 4 + (2,) * 2
+    STEM_STRIDES = (5,) + (2,) * 6
+
+    PE_KERNEL = 128
+    PE_GROUPS = 16
+
     def __init__(
         self,
         n_layers: int,
         d_model: int,
-        stem_dims: tuple[int, ...] = (512,) * 7,
-        stem_kernels: tuple[int, ...] = (10,) + (3,) * 4 + (2,) * 2,
-        stem_strides: tuple[int, ...] = (5,) + (2,) * 6,
         stem_bias: bool = True,
         stem_legacy: bool = False,
-        pe_kernel: int = 128,
-        pe_groups: int = 16,
-        head_dim: int = 64,
-        mlp_ratio: float = 4.0,
         dropout: float = 0.0,
         pre_norm: bool = True,
     ) -> None:
         super().__init__()
-        self.feature_encoder = FeatureEncoder(stem_dims, stem_kernels, stem_strides, stem_bias, dropout, stem_legacy)
+        self.feature_encoder = FeatureEncoder(
+            self.STEM_DIMS, self.STEM_KERNELS, self.STEM_STRIDES, stem_bias, dropout, stem_legacy
+        )
 
-        in_dim = stem_dims[-1]
+        in_dim = self.STEM_DIMS[-1]
         self.proj = nn.Sequential(nn.LayerNorm(in_dim))
         if in_dim != d_model:
             self.proj.append(nn.Linear(in_dim, d_model))
 
         self.pe_conv = nn.Sequential(
-            nn.ConstantPad1d((pe_kernel // 2, pe_kernel // 2 - 1), 0),  # same padding for even kernel
-            nn.Conv1d(d_model, d_model, pe_kernel, groups=pe_groups),
+            nn.ConstantPad1d((self.PE_KERNEL // 2, self.PE_KERNEL // 2 - 1), 0),  # same padding for even kernel
+            nn.Conv1d(d_model, d_model, self.PE_KERNEL, groups=self.PE_GROUPS),
             nn.GELU(),
         )
-        self.transformer = Encoder(n_layers, d_model, head_dim, True, mlp_ratio, dropout, pre_norm)
+        self.transformer = Encoder(n_layers, d_model, dropout=dropout, pre_norm=pre_norm)
 
     def forward(self, x: Tensor) -> Tensor:
         # x: (B, L)
@@ -81,22 +83,26 @@ class Wav2Vec2(nn.Module):
         return x
 
     @classmethod
-    def from_hf(cls, model_id: str, pretrained: bool = False):
-        config_url = f"https://huggingface.co/{model_id}/raw/main/config.json"
+    def from_hf(cls, model_tag: str, *, pretrained: bool = False, **kwargs):
+        config_url = f"https://huggingface.co/{model_tag}/raw/main/config.json"
         config = json.loads(requests.get(config_url).content)
 
-        m = cls(
+        assert config["hidden_size"] == config["num_attention_heads"] * 64
+        _kwargs = dict(
             n_layers=config["num_hidden_layers"],
             d_model=config["hidden_size"],
             stem_bias=config["conv_bias"],
-            stem_legacy=config.get("feat_extract_norm", "layer") == "group",
-            head_dim=config["hidden_size"] // config["num_attention_heads"],
-            pre_norm=config.get("do_stable_layer_norm", False),
         )
+        if "feat_extract_norm" in config:
+            _kwargs["stem_legacy"] = config["feat_extract_norm"] == "group"
+        if "do_stable_layer_norm" in config:
+            _kwargs["pre_norm"] = config["do_stable_layer_norm"]
+
+        m = cls(**_kwargs, **kwargs)
 
         if pretrained:
-            ckpt_url = f"https://huggingface.co/{model_id}/resolve/main/pytorch_model.bin"
-            state_dict = torch.hub.load_state_dict_from_url(ckpt_url, file_name=model_id.replace("/", "_"))
+            ckpt_url = f"https://huggingface.co/{model_tag}/resolve/main/pytorch_model.bin"
+            state_dict = torch.hub.load_state_dict_from_url(ckpt_url, file_name=model_tag.replace("/", "_"))
             state_dict = {k.replace("wav2vec2.", ""): v for k, v in state_dict.items()}
             m.load_hf_state_dict(state_dict)
 
@@ -104,6 +110,8 @@ class Wav2Vec2(nn.Module):
 
     @torch.no_grad()
     def load_hf_state_dict(self, state_dict: dict[str, Tensor]) -> None:
+        state_dict = state_dict.copy()  # shallow copy
+
         def copy_w(module: nn.Conv1d | nn.Linear | nn.LayerNorm | nn.InstanceNorm1d, prefix: str):
             module.weight.copy_(state_dict.pop(f"{prefix}.weight"))
             if module.bias is not None:

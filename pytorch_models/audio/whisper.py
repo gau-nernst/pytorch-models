@@ -15,7 +15,6 @@ class WhisperEncoder(nn.Module):
         d_model: int,
         n_mels: int = 80,
         pe_size: int = 1500,
-        head_dim: int = 64,
         dropout: float = 0.0,
     ) -> None:
         super().__init__()
@@ -31,7 +30,7 @@ class WhisperEncoder(nn.Module):
         self.register_buffer("pe", torch.zeros(pe_size, d_model))
         self.pe: Tensor
 
-        self.encoder = Encoder(n_layers, d_model, head_dim, dropout=dropout)
+        self.encoder = Encoder(n_layers, d_model, dropout=dropout)
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.stem(x).transpose(1, 2)

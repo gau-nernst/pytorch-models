@@ -20,7 +20,7 @@ class BERT(nn.Module):
         vocab_size = math.ceil(vocab_size / 64) * 64  # pad to multiple of 64
         self.token_embs = nn.Embedding(vocab_size, d_model)
         self.pos_embs = nn.Parameter(torch.zeros(max_seq_len, d_model))
-        self.encoder = Encoder(n_layers, d_model, 64, dropout=dropout, pre_norm=False, layernorm_eps=1e-12)
+        self.encoder = Encoder(n_layers, d_model, dropout=dropout, pre_norm=False, layernorm_eps=1e-12)
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.token_embs(x)

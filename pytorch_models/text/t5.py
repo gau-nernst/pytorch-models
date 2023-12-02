@@ -70,17 +70,15 @@ class RelativePositionBias(nn.Module):
 
 
 class T5Block(nn.Module):
-    def __init__(
-        self, dim: int, n_heads: int, mlp_dim: int, head_dim: int = 64, dropout: float = 0.0, decoder: bool = False
-    ) -> None:
+    def __init__(self, dim: int, n_heads: int, mlp_dim: int, dropout: float = 0.0, decoder: bool = False) -> None:
         super().__init__()
         self.sa_norm = LayerNorm(dim)
-        self.sa = MHA(dim, head_dim, n_heads, bias=False, dropout=dropout)
+        self.sa = MHA(dim, n_heads=n_heads, head_dim=64, bias=False, dropout=dropout)
 
         self.decoder = decoder
         if decoder:
             self.ca_norm = LayerNorm(dim)
-            self.ca = MHA(dim, head_dim, n_heads, bias=False, dropout=dropout)
+            self.ca = MHA(dim, n_heads=n_heads, head_dim=64, bias=False, dropout=dropout)
 
         self.mlp_norm = LayerNorm(dim)
         self.mlp = nn.Sequential(
@@ -105,16 +103,13 @@ class T5Stack(nn.Module):
         n_heads: int,
         n_layers: int,
         mlp_dim: int,
-        head_dim: int = 64,
         dropout: float = 0.0,
         decoder: bool = False,
     ) -> None:
         super().__init__()
         self.in_drop = nn.Dropout(dropout)
         self.attn_bias = RelativePositionBias(n_heads, 32, 128)
-        self.layers = nn.Sequential(
-            *[T5Block(dim, n_heads, mlp_dim, head_dim, dropout, decoder) for _ in range(n_layers)]
-        )
+        self.layers = nn.Sequential(*[T5Block(dim, n_heads, mlp_dim, dropout, decoder) for _ in range(n_layers)])
         self.norm = LayerNorm(dim)
         self.out_drop = nn.Dropout(dropout)
         self.decoder = decoder
@@ -133,18 +128,17 @@ class T5Stack(nn.Module):
 class T5Model(nn.Module):
     def __init__(
         self,
+        vocab_size: int,
         dim: int,
         n_heads: int,
         n_layers: int,
         mlp_dim: int,
-        head_dim: int = 64,
         dropout: float = 0.0,
-        vocab_size: int = 32128,
     ) -> None:
         super().__init__()
         self.embed = nn.Embedding(vocab_size, dim)
-        self.encoder = T5Stack(dim, n_heads, n_layers, mlp_dim, head_dim, dropout, False)
-        self.decoder = T5Stack(dim, n_heads, n_layers, mlp_dim, head_dim, dropout, True)
+        self.encoder = T5Stack(dim, n_heads, n_layers, mlp_dim, dropout, False)
+        self.decoder = T5Stack(dim, n_heads, n_layers, mlp_dim, dropout, True)
         self.classifier = nn.Linear(dim, vocab_size, False)
 
     def encode(self, x: Tensor) -> Tensor:
@@ -157,19 +151,22 @@ class T5Model(nn.Module):
         return self.decode(targets, self.encode(x))
 
     @staticmethod
-    def create_model(size: str, checkpoint: str | None = None, **kwargs) -> "T5Model":
+    def from_t5x(model_tag: str, *, pretrained: bool = False, **kwargs) -> "T5Model":
+        variant, size = model_tag.split("-")
+
         dim, n_heads, n_layers, mlp_dim = dict(
             small=(512, 6, 8, 1024),
-            base=(768, 12, 12, 2028),
+            base=(768, 12, 12, 2048),
             large=(1024, 16, 24, 2816),
             xl=(2048, 32, 24, 5120),
             xxl=(4096, 64, 24, 10240),
         )[size]
+        vocab_size = 250112 if variant.startswith("mt5") else 32128
 
-        m = T5Model(dim, n_heads, n_layers, mlp_dim, **kwargs)
+        m = T5Model(vocab_size, dim, n_heads, n_layers, mlp_dim, **kwargs)
 
-        if checkpoint is not None:
-            location = get_checkpoint_location(checkpoint, size)
+        if pretrained:
+            location = get_checkpoint_location(variant, size)
             ckpt = load_t5x_checkpoint(location)
 
             state_dict = {}
@@ -185,11 +182,11 @@ class T5Model(nn.Module):
         return m
 
     @staticmethod
-    def get_tokenizer(checkpoint: str, cache: str = "tokenizers"):
+    def get_tokenizer(model_tag: str, cache: str = "tokenizers"):
         import requests
         import sentencepiece as spm
 
-        location = "mc4.250000.100extra" if checkpoint.startswith("mt5") else "cc_all.32000.100extra"
+        location = "mc4.250000.100extra" if model_tag.startswith("mt5") else "cc_all.32000.100extra"
 
         cache_path = Path(cache) / location
         if not cache_path.exists():
@@ -308,20 +305,20 @@ def load_t5x_checkpoint(location: str, n_threads: int = 16, cache: str = "checkp
     return state_dict
 
 
-def get_checkpoint_location(checkpoint: str, size: str) -> str:
-    if checkpoint in ("t5_1_1", "mt5"):
-        prefix = f"{checkpoint}_"
+def get_checkpoint_location(variant: str, size: str) -> str:
+    if variant in ("t5_1_1", "mt5"):
+        prefix = f"{variant}_"
         n_steps = 1000000
-    elif checkpoint == "t5_1_1_lm_adapted":
+    elif variant == "t5_1_1_lm_adapted":
         prefix = "t5_1_1_lm100k_"
         n_steps = 1100000
-    elif checkpoint == "mt5_lm_adapted":
+    elif variant == "mt5_lm_adapted":
         prefix = "mt5_lm_adapted/"
         n_steps = 1100000
-    elif checkpoint == "flan_t5":
+    elif variant == "flan_t5":
         prefix = "flan_t5_"
         n_steps = dict(small=1198000, base=1184000, large=1164000, xl=1138000, xxl=1114000)[size]
     else:
-        raise ValueError(f"Unsupported {checkpoint=}")
+        raise ValueError(f"Unsupported {variant=}")
 
     return f"{prefix}{size}/checkpoint_{n_steps}"
