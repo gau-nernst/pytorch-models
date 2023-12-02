@@ -1,0 +1,7 @@
+torch
+requests
+pytest
+transformers
+librosa
+openai-whisper @ git+https://github.com/openai/whisper.git
+encodec @ git+https://github.com/facebookresearch/encodec.git
