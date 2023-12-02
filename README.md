@@ -1,14 +1,39 @@
 # pytorch-models
 
-Simple implementation of some models in PyTorch. Weights are ported from HF or official repos. Training is not supported.
+Simple and hackable implementations of some models in PyTorch. Most models are single files, except some standard components like trasnformer, so that they can be easily copy-pasted.
+
+Weights are ported from HF or official repos. Training is not supported.
 
 ## Installation
 
-The only dependency is PyTorch. Follow the official installation instruction [here](https://pytorch.org/), then run:
+The only dependency is PyTorch and requests. Follow the official installation instruction [here](https://pytorch.org/), then run:
 
 ```bash
 pip install git+https://github.com/gau-nernst/pytorch-models.git
 ```
+
+It is not necessary to install this repo. You can go to whichever model you want and copy-paste it.
+
+## Image
+
+TODO:
+
+- migrate from vision-toolbox
+- DETR?
+- SAM?
+
+## Text
+
+Available models:
+
+- [BERT](https://arxiv.org/abs/1810.04805)
+
+TODO:
+
+- [RoBERTa](https://arxiv.org/abs/1907.11692)
+- [T5](https://arxiv.org/pdf/1910.10683) / [Flan-T5](https://arxiv.org/abs/2210.11416)
+- [GPT-1](https://cdn.openai.com/research-covers/language-unsupervised/language_understanding_paper.pdf)
+- [GPT-2](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf)
 
 ## Audio
 
@@ -25,6 +50,20 @@ TODO:
 - AST / AudioMAE
 - Make models support unbatched inputs
 - Support loading EnCodec from AudioCraft
+
+## Audio-to-Text
+
+TODO:
+
+- [Whisper](https://arxiv.org/abs/2212.04356)
+
+## Image-to-Text
+
+TODO:
+
+- [Donut](https://arxiv.org/abs/2111.15664)
+- [Pix2Struct](https://arxiv.org/abs/2210.03347)
+- BLIP?
 
 ### Usage
 
