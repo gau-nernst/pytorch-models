@@ -12,6 +12,7 @@ encoder_decoder = (
 )
 
 
+@torch.no_grad()
 @pytest.mark.parametrize("cls,x_shape", encoder_decoder)
 def test_forward(cls, x_shape: tuple[int, ...]):
     m = cls(1)
@@ -30,6 +31,7 @@ def test_compile(cls, x_shape: tuple[int, ...], norm_type: str, causal: bool):
     m_compiled(x).sum().backward()
 
 
+@torch.no_grad()
 @pytest.mark.parametrize("norm_type,causal", (("weight_norm", True), ("time_group_norm", False)))
 @pytest.mark.parametrize("cls,x_shape", encoder_decoder)
 def test_load_facebook_state_dict(cls, x_shape: tuple[int, ...], norm_type: str, causal: bool):
@@ -47,6 +49,7 @@ def test_load_facebook_state_dict(cls, x_shape: tuple[int, ...], norm_type: str,
     torch.testing.assert_close(actual, expected)
 
 
+@torch.no_grad()
 @pytest.mark.parametrize("variant,audio_channels", (("24khz", 1), ("48khz", 2)))
 def test_from_facebook(variant: str, audio_channels: int):
     method_fb = {"24khz": EncodecModel.encodec_model_24khz, "48khz": EncodecModel.encodec_model_48khz}[variant]

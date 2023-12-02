@@ -16,18 +16,18 @@ cls_inputs = [
 ]
 
 
+@torch.no_grad()
 @pytest.mark.parametrize("cls,inputs", cls_inputs)
 def test_forward(cls, inputs):
     m = cls(dim, n_heads, n_layers, mlp_dim)
-    with torch.no_grad():
-        m(*inputs)
+    m(*inputs)
 
 
+@torch.no_grad()
 @pytest.mark.parametrize("cls,inputs", cls_inputs)
 def test_forward_non_batched(cls, inputs):
     m = cls(dim, n_heads, n_layers, mlp_dim)
-    with torch.no_grad():
-        m(*[x[0] for x in inputs])
+    m(*[x[0] for x in inputs])
 
 
 @pytest.mark.parametrize("cls,inputs", cls_inputs)
@@ -44,6 +44,7 @@ def test_pretrained(checkpoint, vocab_size):
     T5Model.create_model("small", checkpoint=checkpoint, vocab_size=vocab_size)
 
 
+@torch.no_grad()
 def test_against_hf():
     m = T5Model.create_model("small", checkpoint="t5_1_1")
     m_hf = T5ForConditionalGeneration.from_pretrained("google/t5-v1_1-small")
@@ -52,9 +53,8 @@ def test_against_hf():
     x = torch.tensor(tokenizer.Encode("Good morning", add_eos=True)).view(1, -1)
     y = torch.tensor([tokenizer.pad_id()] + tokenizer.Encode("Chao buoi sang")).view(1, -1)
 
-    with torch.no_grad():
-        actual = m(x, y)
-        expected = m_hf(input_ids=x, decoder_input_ids=y)[0]
+    actual = m(x, y)
+    expected = m_hf(input_ids=x, decoder_input_ids=y)[0]
 
     torch.testing.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
