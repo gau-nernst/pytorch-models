@@ -26,8 +26,10 @@ TODO:
 
 Available models:
 
-- [BERT](https://arxiv.org/abs/1810.04805)
-- [T5](https://arxiv.org/pdf/1910.10683) / [Flan-T5](https://arxiv.org/abs/2210.11416)
+- [BERT](https://arxiv.org/abs/1810.04805) (all HF-compatible BERT)
+  - TODO: add tokenizer
+- [T5](https://arxiv.org/pdf/1910.10683) / [Flan-T5](https://arxiv.org/abs/2210.11416) (T5 1.1 + LM-adapted, mT5 + LM-adapted, Flan-T5)
+  - `msgpack` is required for loading pre-trained checkpoints. `sentencepiece` is required to use the tokenizer.
 
 TODO:
 
