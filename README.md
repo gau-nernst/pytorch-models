@@ -1,8 +1,12 @@
 # pytorch-models
 
-Simple and hackable implementations of some models in PyTorch. Most models are single files, except some standard components like trasnformer, so that they can be easily copy-pasted.
+Simple and hackable implementations of some models in PyTorch.
 
-Weights are ported from HF or official repos. Training is not supported.
+Features:
+- Most models are single files, except some standard components like trasnformer, so that they can be easily copy-pasted.
+- All models are compatible with `torch.compile()`.
+- Weights are loaded from official repos if possible, otherwise from HuggingFace.
+- Training is not supported.
 
 ## Installation
 
