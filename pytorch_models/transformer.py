@@ -31,7 +31,9 @@ class MHA(nn.Module):
         self.head_dim = head_dim
         self.dropout = dropout
 
-    def forward(self, x: Tensor, memory: Tensor | None = None, attn_bias: Tensor | None = None) -> Tensor:
+    def forward(
+        self, x: Tensor, memory: Tensor | None = None, attn_bias: Tensor | None = None, causal: bool = False
+    ) -> Tensor:
         memory = x if memory is None else memory
 
         q = self.q_proj(x).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)  # (*, n_heads, L, head_dim)
@@ -39,7 +41,7 @@ class MHA(nn.Module):
         v = self.v_proj(memory).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)
 
         dropout = self.dropout if self.training else 0.0
-        out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_bias, dropout_p=dropout)
+        out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_bias, dropout_p=dropout, is_causal=causal)
         return self.out_proj(out.transpose(-2, -3).flatten(-2))
 
 
@@ -52,7 +54,44 @@ class MLP(nn.Sequential):
         self.dropout = nn.Dropout(dropout)
 
 
-class EncoderBlock(nn.Module):
+class DecoderBlock(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        n_heads: int | None = None,
+        head_dim: int | None = None,
+        cross_attn: bool = False,
+        bias: bool = True,
+        mlp_ratio: float = 4.0,
+        dropout: float = 0.0,
+        pre_norm: bool = True,
+        layernorm_eps: float = 1e-5,
+    ) -> None:
+        super().__init__()
+        self.pre_norm = pre_norm
+
+        self.sa_norm = nn.LayerNorm(d_model, layernorm_eps)
+        self.sa = MHA(d_model, n_heads, head_dim, bias, dropout)
+
+        self.ca_norm = nn.LayerNorm(d_model, layernorm_eps) if cross_attn else None
+        self.ca = MHA(d_model, n_heads, head_dim, bias, dropout) if cross_attn else None
+
+        self.mlp_norm = nn.LayerNorm(d_model, layernorm_eps)
+        self.mlp = MLP(d_model, int(d_model * mlp_ratio), dropout)
+
+    def forward(self, x: Tensor, memory: Tensor | None = None) -> Tensor:
+        if self.pre_norm:
+            x = x + self.sa(self.sa_norm(x), causal=True)
+            x = x + self.ca(self.ca_norm(x), memory) if self.ca is not None else x
+            x = x + self.mlp(self.mlp_norm(x))
+        else:
+            x = self.sa_norm(x + self.sa(x, causal=True))
+            x = self.ca_norm(x + self.ca(x, memory)) if self.ca is not None else x
+            x = self.mlp_norm(x + self.mlp(x))
+        return x
+
+
+class EncoderBlock(DecoderBlock):
     def __init__(
         self,
         d_model: int,
@@ -64,12 +103,7 @@ class EncoderBlock(nn.Module):
         pre_norm: bool = True,
         layernorm_eps: float = 1e-5,
     ) -> None:
-        super().__init__()
-        self.sa_norm = nn.LayerNorm(d_model, eps=layernorm_eps)
-        self.sa = MHA(d_model, n_heads, head_dim, bias, dropout)
-        self.mlp_norm = nn.LayerNorm(d_model, eps=layernorm_eps)
-        self.mlp = MLP(d_model, int(d_model * mlp_ratio), dropout)
-        self.pre_norm = pre_norm
+        super().__init__(d_model, n_heads, head_dim, False, bias, mlp_ratio, dropout, pre_norm, layernorm_eps)
 
     def forward(self, x: Tensor) -> Tensor:
         if self.pre_norm:
