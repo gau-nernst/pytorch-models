@@ -3,7 +3,7 @@ import torch
 import whisper
 from torch import Tensor
 
-from pytorch_models.audio.whisper import WhisperEncoder, WhisperPreprocessor
+from pytorch_models.audio2text.whisper import WhisperEncoder, WhisperPreprocessor
 
 
 @pytest.fixture
