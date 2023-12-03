@@ -4,13 +4,13 @@ import pytest
 import torch
 from transformers import T5ForConditionalGeneration
 
-from pytorch_models.text import T5Generator, T5Model, T5Stack
+from pytorch_models.text import T5Decoder, T5Encoder, T5Generator, T5Model
 
 
 dim, n_heads, n_layers, mlp_dim = 512, 6, 8, 1024  # small version
 cls_inputs = [
-    (partial(T5Stack, decoder=False), (torch.randn(2, 64, dim),)),
-    (partial(T5Stack, decoder=True), (torch.randn(2, 64, dim), torch.randn(2, 32, dim))),
+    (T5Encoder, (torch.randn(2, 64, dim),)),
+    (T5Decoder, (torch.randn(2, 64, dim), torch.randn(2, 32, dim))),
     (partial(T5Model, 2000), (torch.randint(1000, size=(2, 64)), torch.randint(1000, size=(2, 32)))),
 ]
 

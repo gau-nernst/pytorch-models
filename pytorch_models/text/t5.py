@@ -72,15 +72,13 @@ class RelativePositionBias(nn.Module):
 
 
 class T5Block(nn.Module):
-    def __init__(self, dim: int, n_heads: int, mlp_dim: int, dropout: float = 0.0, decoder: bool = False) -> None:
+    def __init__(self, dim: int, n_heads: int, mlp_dim: int, dropout: float = 0.0, cross_attn: bool = False) -> None:
         super().__init__()
         self.sa_norm = LayerNorm(dim)
         self.sa = MHA(dim, n_heads=n_heads, head_dim=64, bias=False, dropout=dropout)
 
-        self.decoder = decoder
-        if decoder:
-            self.ca_norm = LayerNorm(dim)
-            self.ca = MHA(dim, n_heads=n_heads, head_dim=64, bias=False, dropout=dropout)
+        self.ca_norm = LayerNorm(dim) if cross_attn else None
+        self.ca = MHA(dim, n_heads=n_heads, head_dim=64, bias=False, dropout=dropout) if cross_attn else None
 
         self.mlp_norm = LayerNorm(dim)
         self.mlp = nn.Sequential(
@@ -90,57 +88,57 @@ class T5Block(nn.Module):
             nn.Dropout(dropout),
         )
 
-    def forward(self, x: Tensor, encoded: Tensor | None = None, attn_bias: Tensor | None = None) -> Tensor:
+    def forward(self, x: Tensor, memory: Tensor | None = None, attn_bias: Tensor | None = None) -> Tensor:
         x = x + self.sa(self.sa_norm(x), attn_bias=attn_bias)
-        if self.decoder:
-            x = x + self.ca(self.ca_norm(x), encoded)
+        if self.ca is not None:
+            x = x + self.ca(self.ca_norm(x), memory)
         x = x + self.mlp(self.mlp_norm(x))
         return x
 
 
-class T5Stack(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        n_heads: int,
-        n_layers: int,
-        mlp_dim: int,
-        dropout: float = 0.0,
-        decoder: bool = False,
-    ) -> None:
+class T5Encoder(nn.Module):
+    def __init__(self, dim: int, n_heads: int, n_layers: int, mlp_dim: int, dropout: float = 0.0) -> None:
         super().__init__()
         self.in_drop = nn.Dropout(dropout)
         self.attn_bias = RelativePositionBias(n_heads)
-        self.layers = nn.Sequential(*[T5Block(dim, n_heads, mlp_dim, dropout, decoder) for _ in range(n_layers)])
+        self.layers = nn.Sequential(*[T5Block(dim, n_heads, mlp_dim, dropout, False) for _ in range(n_layers)])
         self.norm = LayerNorm(dim)
         self.out_drop = nn.Dropout(dropout)
-        self.decoder = decoder
 
-    def forward(self, x: Tensor, encoded: Tensor | None = None) -> Tensor:
-        attn_bias = self.attn_bias(x.shape[-2], not self.decoder)
-        if self.decoder:
-            attn_bias = attn_bias + attn_bias.new_full(attn_bias.shape[-2:], -1e10).triu(1)
-
+    def forward(self, x: Tensor) -> Tensor:
+        attn_bias = self.attn_bias(x.shape[-2], bidirection=True)
         x = self.in_drop(x)
         for layer in self.layers:
-            x = layer(x, encoded, attn_bias)
+            x = layer(x, attn_bias=attn_bias)
+        return self.out_drop(self.norm(x))
+
+
+class T5Decoder(nn.Module):
+    def __init__(self, dim: int, n_heads: int, n_layers: int, mlp_dim: int, dropout: float = 0.0) -> None:
+        super().__init__()
+        self.in_drop = nn.Dropout(dropout)
+        self.attn_bias = RelativePositionBias(n_heads)
+        self.layers = nn.Sequential(*[T5Block(dim, n_heads, mlp_dim, dropout, True) for _ in range(n_layers)])
+        self.norm = LayerNorm(dim)
+        self.out_drop = nn.Dropout(dropout)
+
+    def forward(self, x: Tensor, memory: Tensor) -> Tensor:
+        causal_mask = x.new_full((x.shape[-2], x.shape[-2]), -1e10).triu(1)
+        attn_bias = self.attn_bias(x.shape[-2], bidirection=False) + causal_mask
+        x = self.in_drop(x)
+        for layer in self.layers:
+            x = layer(x, memory, attn_bias=attn_bias)
         return self.out_drop(self.norm(x))
 
 
 class T5Model(nn.Module):
     def __init__(
-        self,
-        vocab_size: int,
-        dim: int,
-        n_heads: int,
-        n_layers: int,
-        mlp_dim: int,
-        dropout: float = 0.0,
+        self, vocab_size: int, dim: int, n_heads: int, n_layers: int, mlp_dim: int, dropout: float = 0.0
     ) -> None:
         super().__init__()
         self.embed = nn.Embedding(vocab_size, dim)
-        self.encoder = T5Stack(dim, n_heads, n_layers, mlp_dim, dropout, False)
-        self.decoder = T5Stack(dim, n_heads, n_layers, mlp_dim, dropout, True)
+        self.encoder = T5Encoder(dim, n_heads, n_layers, mlp_dim, dropout)
+        self.decoder = T5Decoder(dim, n_heads, n_layers, mlp_dim, dropout)
         self.classifier = nn.Linear(dim, vocab_size, False)
 
     def encode(self, x: Tensor) -> Tensor:
