@@ -18,7 +18,12 @@ It is not necessary to install this repo. You can go to whichever model you want
 
 Available models:
 
-- [ViT](https://arxiv.org/abs/2010.11929) with [AugReg](https://arxiv.org/abs/2106.10270) and [SigLip](https://arxiv.org/abs/2303.15343) weights
+- [ViT](https://arxiv.org/abs/2010.11929)
+  - [AugReg](https://arxiv.org/abs/2106.10270) weights: Ti/16, S/32, S/16, B/32, B/16, L/16
+  - [SigLip](https://arxiv.org/abs/2303.15343) weights: B/16 (224, 256, 384, 512), L/16 (256, 384)
+- [MLP-Mixer](https://arxiv.org/abs/2105.01601)
+  - ImageNet-21k, ImageNet-1k, or [SAM](https://arxiv.org/abs/2010.01412) weights: B/16, L/16
+  - [GSAM](https://arxiv.org/abs/2203.08065) weights: S/32, S/16, S/8, B/32, B/16
 
 TODO:
 
