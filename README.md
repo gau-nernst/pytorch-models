@@ -16,6 +16,10 @@ It is not necessary to install this repo. You can go to whichever model you want
 
 ## Image
 
+Available models:
+
+- [ViT](https://arxiv.org/abs/2010.11929) with [AugReg](https://arxiv.org/abs/2106.10270) and [SigLip](https://arxiv.org/abs/2303.15343) weights
+
 TODO:
 
 - migrate from vision-toolbox
@@ -69,14 +73,39 @@ TODO:
 
 ## Usage
 
+### Image
+
+```python
+import torch
+from pytorch_models.image import ViT
+
+model = ViT.from_google("B/16_augreg", pretrained=True)
+outputs = model(torch.randn(1, 3, 224, 224))  # (1, 768)
+
+model.resize_pe(256)  # resize positional embeddings to accept different input size
+outputs = model(torch.randn(1, 3, 256, 256))  # (1, 768)
+```
+
 ### Text
+
+For `BERT`
+
+```python
+import torch
+from pytorch_models.text import BERT
+
+model = BERT.from_hf("bert-base-uncased", pretrained=True)
+outputs = model(torch.randint(2000, size=(1, 64)))  # (1, 64, 768)
+```
+
+For `T5Model`
 
 ```python
 import torch
 from pytorch_models.text import T5Model
 
-model = T5Model.create_model("small", checkpoint="flan_t5")
-tokenizer = T5Model.get_tokenizer("flan_t5")
+model = T5Model.from_t5x("flan_t5-small", pretrained=True)
+tokenizer = T5Model.get_tokenizer("flan_t5-small")
 
 inputs = "Translate to German. What is your name?"
 input_ids = tokenizer.Encode(inputs, add_eos=True)
