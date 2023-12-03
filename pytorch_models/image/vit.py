@@ -93,7 +93,7 @@ class ViT(nn.Module):
         if "_" in model_tag:
             model_tag, weights = model_tag.split("_")
         else:
-            weights = None
+            weights = "augreg"
 
         size, patch_size = model_tag.split("/")
         patch_size = int(patch_size)
