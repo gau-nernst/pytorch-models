@@ -32,7 +32,6 @@ Available models:
 
 TODO:
 
-- migrate from vision-toolbox
 - DETR?
 - SAM?
 
