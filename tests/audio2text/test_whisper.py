@@ -4,7 +4,7 @@ import pytest
 import torch
 import whisper
 
-from pytorch_models.audio2text.whisper import Whisper, WhisperDecoder, WhisperEncoder, WhisperPreprocessor
+from pytorch_models.audio2text import Whisper, WhisperDecoder, WhisperEncoder, WhisperPreprocessor
 
 
 vocab_size = 100

@@ -1,1 +1,1 @@
-from .whisper import WhisperEncoder, WhisperPreprocessor
+from .whisper import Whisper, WhisperDecoder, WhisperEncoder, WhisperPreprocessor
