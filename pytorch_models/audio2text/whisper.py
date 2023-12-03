@@ -9,9 +9,9 @@ from ..transformer import Decoder, Encoder
 
 
 class WhisperEncoder(nn.Module):
-    def __init__(
-        self, n_layers: int, d_model: int, n_mels: int = 80, pe_size: int = 1500, dropout: float = 0.0
-    ) -> None:
+    max_seq_len = 3000
+
+    def __init__(self, n_layers: int, d_model: int, n_mels: int = 80, dropout: float = 0.0) -> None:
         super().__init__()
         self.stem = nn.Sequential(
             nn.Conv1d(n_mels, d_model, 3, 1, 1),
@@ -19,12 +19,10 @@ class WhisperEncoder(nn.Module):
             nn.Conv1d(d_model, d_model, 3, 2, 1),
             nn.GELU(),
         )
-
         # sinusoids do not match OpenAI weights exactly.
         # initialize pe to zeros and load it from OpenAI weights later.
-        self.register_buffer("pos_embs", torch.zeros(pe_size, d_model))
+        self.register_buffer("pos_embs", torch.zeros(self.max_seq_len // 2, d_model))
         self.pos_embs: Tensor
-
         self.encoder = Encoder(n_layers, d_model, dropout=dropout)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -33,8 +31,35 @@ class WhisperEncoder(nn.Module):
         x = self.encoder(x)
         return x
 
+
+class WhisperDecoder(nn.Module):
+    max_seq_len = 448
+
+    def __init__(self, vocab_size: int, n_layers: int, d_model: int, dropout: float = 0.0) -> None:
+        super().__init__()
+        self.token_embs = nn.Embedding(vocab_size, d_model)
+        self.pos_embs = nn.Parameter(torch.zeros(self.max_seq_len, d_model))
+        self.decoder = Decoder(n_layers, d_model, cross_attn=True, dropout=dropout)
+
+    def forward(self, x: Tensor, memory: Tensor) -> Tensor:
+        x = self.token_embs(x)
+        x = x + self.pos_embs[: x.shape[1]]
+        x = self.decoder(x, memory)
+        x = x @ self.token_embs.weight.T  # weight-tying
+        return x
+
+
+class Whisper(nn.Module):
+    def __init__(self, vocab_size: int, n_layers: int, d_model: int, n_mels: int = 80, dropout: float = 0.0) -> None:
+        super().__init__()
+        self.encoder = WhisperEncoder(n_layers, d_model, n_mels, dropout=dropout)
+        self.decoder = WhisperDecoder(vocab_size, n_layers, d_model, dropout=dropout)
+
+    def forward(self, x: Tensor, targets: Tensor) -> Tensor:
+        return self.decoder(targets, self.encoder(x))
+
     @staticmethod
-    def from_openai(model_tag: str, pretrained: bool = False) -> "WhisperEncoder":
+    def from_openai(model_tag: str, *, pretrained: bool = False, **kwargs) -> "Whisper":
         n_layers, d_model, ckpt_hash = {
             "tiny": (4, 384, "65147644a518d12f04e32d6f3b26facc3f8dd46e5390956a9424a650c0ce22b9"),
             "tiny.en": (4, 384, "d3dd57d32accea0b295c96e26691aa14d8822fac7d9d27d5dc00b4ca2826dd03"),
@@ -48,59 +73,62 @@ class WhisperEncoder(nn.Module):
             "large-v2": (32, 1280, "81f7c96c852ee8fc832187b0132e569d6c3065a3252ed18e56effd0b6a73e524"),
             "large-v3": (32, 1280, "e5b1a55b89c1367dacf97e3e19bfd829a01529dbfdeefa8caeb59b3f1b81dadb"),
         }[model_tag]
-        n_mels = 128 if model_tag == "large-v3" else 80
 
-        m = WhisperEncoder(n_layers, d_model, n_mels=n_mels)
+        if model_tag == "large-v3":
+            n_mels = 128
+            vocab_size = 51866
+        else:
+            n_mels = 80
+            vocab_size = 51864 if model_tag.endswith(".en") else 51865
+
+        m = Whisper(vocab_size, n_layers, d_model, n_mels, **kwargs)
         if pretrained:
             url = f"https://openaipublic.azureedge.net/main/whisper/models/{ckpt_hash}/{model_tag}.pt"
-            state_dict = torch.hub.load_state_dict_from_url(url, file_name=f"whisper_{model_tag}")
-            state_dict = state_dict["model_state_dict"]
-            state_dict = {k.removeprefix("encoder."): v for k, v in state_dict.items() if k.startswith("encoder.")}
+            state_dict = torch.hub.load_state_dict_from_url(url, file_name=f"whisper_{model_tag}")["model_state_dict"]
             m.load_openai_state_dict(state_dict)
 
         return m
 
     @torch.no_grad()
     def load_openai_state_dict(self, state_dict: dict[str, Tensor]) -> None:
+        state_dict = state_dict.copy()
+
         def copy_w(module: nn.Conv1d | nn.Linear | nn.LayerNorm, prefix: str):
             module.weight.copy_(state_dict.pop(f"{prefix}.weight"))
             if module.bias is not None:
                 module.bias.copy_(state_dict.pop(f"{prefix}.bias"))
 
-        copy_w(self.stem[0], "conv1")
-        copy_w(self.stem[2], "conv2")
-        self.pos_embs.copy_(state_dict.pop("positional_embedding"))
+        copy_w(self.encoder.stem[0], "encoder.conv1")
+        copy_w(self.encoder.stem[2], "encoder.conv2")
+        self.encoder.pos_embs.copy_(state_dict.pop("encoder.positional_embedding"))
 
-        for i, block in enumerate(self.encoder.layers):
-            prefix = f"blocks.{i}"
-            copy_w(block.sa.q_proj, f"{prefix}.attn.query")
-            copy_w(block.sa.k_proj, f"{prefix}.attn.key")
-            copy_w(block.sa.v_proj, f"{prefix}.attn.value")
-            copy_w(block.sa.out_proj, f"{prefix}.attn.out")
-            copy_w(block.sa_norm, f"{prefix}.attn_ln")
+        self.decoder.token_embs.weight.copy_(state_dict.pop("decoder.token_embedding.weight"))
+        self.decoder.pos_embs.copy_(state_dict.pop("decoder.positional_embedding"))
 
-            copy_w(block.mlp.linear1, f"{prefix}.mlp.0")
-            copy_w(block.mlp.linear2, f"{prefix}.mlp.2")
-            copy_w(block.mlp_norm, f"{prefix}.mlp_ln")
+        for transformer, _prefix in [(self.encoder.encoder, "encoder"), (self.decoder.decoder, "decoder")]:
+            for i, block in enumerate(transformer.layers):
+                prefix = f"{_prefix}.blocks.{i}"
+                copy_w(block.sa.q_proj, f"{prefix}.attn.query")
+                copy_w(block.sa.k_proj, f"{prefix}.attn.key")
+                copy_w(block.sa.v_proj, f"{prefix}.attn.value")
+                copy_w(block.sa.out_proj, f"{prefix}.attn.out")
+                copy_w(block.sa_norm, f"{prefix}.attn_ln")
 
-        copy_w(self.encoder.norm, "ln_post")
+                if block.ca is not None:
+                    copy_w(block.ca.q_proj, f"{prefix}.cross_attn.query")
+                    copy_w(block.ca.k_proj, f"{prefix}.cross_attn.key")
+                    copy_w(block.ca.v_proj, f"{prefix}.cross_attn.value")
+                    copy_w(block.ca.out_proj, f"{prefix}.cross_attn.out")
+                    copy_w(block.ca_norm, f"{prefix}.cross_attn_ln")
+
+                copy_w(block.mlp.linear1, f"{prefix}.mlp.0")
+                copy_w(block.mlp.linear2, f"{prefix}.mlp.2")
+                copy_w(block.mlp_norm, f"{prefix}.mlp_ln")
+
+            copy_w(transformer.norm, "encoder.ln_post" if _prefix == "encoder" else "decoder.ln")
+
         if len(state_dict) > 0:
             print(state_dict.keys())
-
-
-class WhisperDecoder(nn.Module):
-    def __init__(self, vocab_size: int, n_layers: int, d_model: int, max_seq_len: int, dropout: float = 0.0) -> None:
-        super().__init__()
-        self.token_embs = nn.Embedding(vocab_size, d_model)
-        self.pos_embs = nn.Parameter(torch.zeros(max_seq_len, d_model))
-        self.decoder = Decoder(n_layers, d_model, cross_attn=True, dropout=dropout)
-
-    def forward(self, x: Tensor, memory: Tensor) -> Tensor:
-        x = self.token_embs(x)
-        x = x + self.pos_embs[: x.shape[1]]
-        x = self.decoder(x, memory)
-        x = x @ self.token_embs.weight.T  # weight-tying
-        return x
 
 
 class WhisperPreprocessor(MelSpectrogram):
