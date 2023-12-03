@@ -39,6 +39,7 @@ class MHAPooling(nn.Module):
         return x
 
 
+# TODO: support non-square input
 class ViT(nn.Module):
     def __init__(
         self,
@@ -46,7 +47,7 @@ class ViT(nn.Module):
         d_model: int,
         n_heads: int,
         patch_size: int,
-        img_size: int,
+        img_size: int = 224,
         cls_token: bool = True,
         pool_type: str = "cls_token",
         bias: bool = True,
@@ -88,8 +89,14 @@ class ViT(nn.Module):
         self.pe = nn.Parameter(pe)
 
     @staticmethod
-    def from_google(variant: str, img_size: int, *, weights: str | None = None) -> "ViT":
-        variant, patch_size = variant.split("/")
+    def from_google(model_tag: str, *, pretrained: bool = False, **kwargs) -> "ViT":
+        if "_" in model_tag:
+            model_tag, weights = model_tag.split("_")
+        else:
+            weights = None
+
+        size, patch_size = model_tag.split("/")
+        patch_size = int(patch_size)
 
         n_layers, d_model, n_heads = dict(
             Ti=(12, 192, 3),
@@ -98,39 +105,41 @@ class ViT(nn.Module):
             B=(12, 768, 12),
             L=(24, 1024, 16),
             H=(32, 1280, 16),
-        )[variant]
-        patch_size = int(patch_size)
-        kwargs = dict()
+        )[size]
+
+        _kwargs = dict()
         if weights == "siglip":
-            kwargs.update(cls_token=False, pool_type="mha")
+            _kwargs.update(cls_token=False, pool_type="mha")
 
-        m = ViT(n_layers, d_model, n_heads, patch_size, img_size, **kwargs)
+        m = ViT(n_layers, d_model, n_heads, patch_size, **_kwargs, **kwargs)
 
-        if weights == "augreg":
-            assert img_size == 224
-            ckpt = {
-                ("Ti", 16): "Ti_16-i21k-300ep-lr_0.001-aug_none-wd_0.03-do_0.0-sd_0.0.npz",
-                ("S", 32): "S_32-i21k-300ep-lr_0.001-aug_none-wd_0.1-do_0.0-sd_0.0.npz",
-                ("S", 16): "S_16-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0.npz",
-                ("B", 32): "B_32-i21k-300ep-lr_0.001-aug_light1-wd_0.1-do_0.0-sd_0.0.npz",
-                ("B", 16): "B_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.0-sd_0.0.npz",
-                ("L", 16): "L_16-i21k-300ep-lr_0.001-aug_strong1-wd_0.1-do_0.0-sd_0.0.npz",
-            }[(variant, patch_size)]
-            m.load_flax_ckpt(f"augreg/{ckpt}")
+        # TODO: support pe resizing
+        if pretrained:
+            if weights == "augreg":
+                ckpt = {
+                    "Ti/16": "Ti_16-i21k-300ep-lr_0.001-aug_none-wd_0.03-do_0.0-sd_0.0.npz",
+                    "S/32": "S_32-i21k-300ep-lr_0.001-aug_none-wd_0.1-do_0.0-sd_0.0.npz",
+                    "S/16": "S_16-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0.npz",
+                    "B/32": "B_32-i21k-300ep-lr_0.001-aug_light1-wd_0.1-do_0.0-sd_0.0.npz",
+                    "B/16": "B_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.0-sd_0.0.npz",
+                    "L/16": "L_16-i21k-300ep-lr_0.001-aug_strong1-wd_0.1-do_0.0-sd_0.0.npz",
+                }[model_tag]
+                m.load_flax_ckpt(f"augreg/{ckpt}")
 
-        elif weights == "siglip":
-            ckpt = {
-                ("B", 16, 224): "webli_en_b16_224_63724782.npz",
-                ("B", 16, 256): "webli_en_b16_256_60500360.npz",
-                ("B", 16, 384): "webli_en_b16_384_68578854.npz",
-                ("B", 16, 512): "webli_en_b16_512_68580893.npz",
-                ("L", 16, 256): "webli_en_l16_256_60552751.npz",
-                ("L", 16, 384): "webli_en_l16_384_63634585.npz",
-            }[(variant, patch_size, img_size)]
-            m.load_flax_ckpt(f"siglip/{ckpt}", big_vision=True, prefix="params/img/")
+            elif weights == "siglip":
+                img_size = kwargs.get("img_size", 224)
+                ckpt = {
+                    ("B/16", 224): "webli_en_b16_224_63724782.npz",
+                    ("B/16", 256): "webli_en_b16_256_60500360.npz",
+                    ("B/16", 384): "webli_en_b16_384_68578854.npz",
+                    ("B/16", 512): "webli_en_b16_512_68580893.npz",
+                    ("L/16", 256): "webli_en_l16_256_60552751.npz",
+                    ("L/16", 384): "webli_en_l16_384_63634585.npz",
+                }[(model_tag, img_size)]
+                m.load_flax_ckpt(f"siglip/{ckpt}", big_vision=True, prefix="params/img/")
 
-        elif not weights is None:
-            raise ValueError(f"Unsupported weights={weights}")
+            else:
+                raise ValueError(f"Unsupported weights={weights}")
 
         return m
 
