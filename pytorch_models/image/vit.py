@@ -1,5 +1,6 @@
 # ViT: https://arxiv.org/abs/2010.11929
 # AugReg: https://arxiv.org/abs/2106.10270
+# DeiT-3: https://arxiv.org/abs/2204.07118
 # https://github.com/google-research/vision_transformer/blob/main/vit_jax/models_vit.py
 
 from functools import partial
@@ -39,6 +40,7 @@ class MHAPooling(nn.Module):
         return x
 
 
+# NOTE: layer scale and stochastic depth are not supported
 # TODO: support non-square input
 class ViT(nn.Module):
     def __init__(
@@ -193,6 +195,78 @@ class ViT(nn.Module):
 
         if len(jax_weights) > 0:
             print(jax_weights.keys())
+
+    @staticmethod
+    def from_deit3(model_tag: str, *, pretrained: bool = False, **kwargs) -> "ViT":
+        size, patch_size = model_tag.split("/")
+        patch_size = int(patch_size)
+
+        n_layers, d_model, n_heads = dict(
+            Ti=(12, 192, 3),
+            S=(12, 384, 6),
+            M=(12, 512, 8),
+            B=(12, 768, 12),
+            L=(24, 1024, 16),
+            H=(32, 1280, 16),
+        )[size]
+        m = ViT(n_layers, d_model, n_heads, patch_size, **kwargs)
+
+        # TODO: support patch_size resizing
+        if pretrained:
+            assert patch_size == 16
+            img_size = kwargs.get("img_size", 224)
+            _size = dict(S="small", M="medium", B="base", L="large", H="huge")[size]
+
+            url = f"https://dl.fbaipublicfiles.com/deit/deit_3_{_size}_{img_size}_21k.pth"
+            state_dict = torch.hub.load_state_dict_from_url(url)["model"]
+            m.load_deit3_state_dict(state_dict)
+
+        return m
+
+    @torch.no_grad()
+    def load_deit3_state_dict(self, state_dict: dict[str, Tensor]) -> None:
+        state_dict = state_dict.copy()  # shallow clone
+
+        def copy_(m: nn.Linear | nn.LayerNorm, prefix: str):
+            m.weight.copy_(state_dict.pop(prefix + ".weight").view(m.weight.shape))
+            m.bias.copy_(state_dict.pop(prefix + ".bias"))
+
+        copy_(self.patch_embed, "patch_embed.proj")
+        pe = state_dict.pop("pos_embed")
+        self.pe.copy_(pe[:, -self.pe.shape[1] :])
+
+        self.cls_token.copy_(state_dict.pop("cls_token"))
+        if pe.shape[1] > self.pe.shape[1]:
+            self.cls_token.add_(pe[:, 0])
+
+        copy_(self.encoder.norm, "norm")
+        for i, layer in enumerate(self.encoder.layers):
+            prefix = f"blocks.{i}"
+            copy_(layer.norm1, f"{prefix}.norm1")
+            copy_(layer.norm2, f"{prefix}.norm2")
+
+            q_w, k_w, v_w = state_dict.pop(f"{prefix}.attn.qkv.weight").chunk(3, 0)
+            layer.mha.q_proj.weight.copy_(q_w)
+            layer.mha.k_proj.weight.copy_(k_w)
+            layer.mha.v_proj.weight.copy_(v_w)
+
+            q_b, k_b, v_b = state_dict.pop(f"{prefix}.attn.qkv.bias").chunk(3, 0)
+            layer.mha.q_proj.bias.copy_(q_b)
+            # layer.mha.k_proj.bias.copy_(k_b)
+            layer.mha.v_proj.bias.copy_(v_b)
+
+            copy_(layer.mha.out_proj, f"{prefix}.attn.proj")
+            scale = state_dict.pop(f"{prefix}.gamma_1")
+            layer.mha.out_proj.weight.mul_(scale.view(-1, 1))
+            layer.mha.out_proj.bias.mul_(scale)
+
+            copy_(layer.mlp.linear1, f"{prefix}.mlp.fc1")
+            copy_(layer.mlp.linear2, f"{prefix}.mlp.fc2")
+            scale = state_dict.pop(f"{prefix}.gamma_2")
+            layer.mlp.linear2.weight.mul_(scale.view(-1, 1))
+            layer.mlp.linear2.bias.mul_(scale)
+
+        print(state_dict.keys())
 
 
 def load_flax_ln(norm: nn.LayerNorm, weights: dict[str, Tensor], prefix: str) -> None:
