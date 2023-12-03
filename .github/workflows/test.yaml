@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        modality: [image, text, audio]
+        modality: [image, text, audio, audio2text]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4

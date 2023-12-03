@@ -79,14 +79,14 @@ class BERT(nn.Module):
             prefix = f"encoder.layer.{i}"
             state_dict.pop(f"{prefix}.attention.self.key.bias")
 
-            copy_(layer.mha.q_proj, f"{prefix}.attention.self.query")
-            copy_(layer.mha.k_proj, f"{prefix}.attention.self.key")
-            copy_(layer.mha.v_proj, f"{prefix}.attention.self.value")
-            copy_(layer.mha.out_proj, f"{prefix}.attention.output.dense")
-            copy_(layer.norm1, f"{prefix}.attention.output.LayerNorm")
+            copy_(layer.sa.q_proj, f"{prefix}.attention.self.query")
+            copy_(layer.sa.k_proj, f"{prefix}.attention.self.key")
+            copy_(layer.sa.v_proj, f"{prefix}.attention.self.value")
+            copy_(layer.sa.out_proj, f"{prefix}.attention.output.dense")
+            copy_(layer.sa_norm, f"{prefix}.attention.output.LayerNorm")
 
             copy_(layer.mlp.linear1, f"{prefix}.intermediate.dense")
             copy_(layer.mlp.linear2, f"{prefix}.output.dense")
-            copy_(layer.norm2, f"{prefix}.output.LayerNorm")
+            copy_(layer.mlp_norm, f"{prefix}.output.LayerNorm")
 
         print(state_dict.keys())
