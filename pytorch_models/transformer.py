@@ -139,3 +139,30 @@ class Encoder(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.norm(self.layers(x)) if self.pre_norm else self.layers(self.norm(x))
+
+
+class Decoder(nn.Module):
+    def __init__(
+        self,
+        n_layers: int,
+        d_model: int,
+        n_heads: int | None = None,
+        head_dim: int | None = None,
+        cross_attn: bool = False,
+        bias: bool = True,
+        mlp_ratio: float = 4.0,
+        dropout: float = 0.0,
+        pre_norm: bool = True,
+        layernorm_eps: float = 1e-5,
+    ) -> None:
+        super().__init__()
+        self.layers = nn.Sequential()
+        for _ in range(n_layers):
+            self.layers.append(
+                DecoderBlock(d_model, n_heads, head_dim, cross_attn, bias, mlp_ratio, dropout, pre_norm, layernorm_eps)
+            )
+        self.norm = nn.LayerNorm(d_model, eps=layernorm_eps)
+        self.pre_norm = pre_norm
+
+    def forward(self, x: Tensor, memory: Tensor | None = None) -> Tensor:
+        return self.norm(self.layers(x, memory)) if self.pre_norm else self.layers(self.norm(x), memory)

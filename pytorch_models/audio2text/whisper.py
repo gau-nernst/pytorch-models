@@ -5,17 +5,12 @@ import torch
 from torch import Tensor, nn
 
 from ..audio.spectrogram import MelSpectrogram
-from ..transformer import Encoder
+from ..transformer import Decoder, Encoder
 
 
 class WhisperEncoder(nn.Module):
     def __init__(
-        self,
-        n_layers: int,
-        d_model: int,
-        n_mels: int = 80,
-        pe_size: int = 1500,
-        dropout: float = 0.0,
+        self, n_layers: int, d_model: int, n_mels: int = 80, pe_size: int = 1500, dropout: float = 0.0
     ) -> None:
         super().__init__()
         self.stem = nn.Sequential(
@@ -27,14 +22,14 @@ class WhisperEncoder(nn.Module):
 
         # sinusoids do not match OpenAI weights exactly.
         # initialize pe to zeros and load it from OpenAI weights later.
-        self.register_buffer("pe", torch.zeros(pe_size, d_model))
-        self.pe: Tensor
+        self.register_buffer("pos_embs", torch.zeros(pe_size, d_model))
+        self.pos_embs: Tensor
 
         self.encoder = Encoder(n_layers, d_model, dropout=dropout)
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.stem(x).transpose(1, 2)
-        x = x + self.pe[: x.shape[1]]
+        x = x + self.pos_embs[: x.shape[1]]
         x = self.encoder(x)
         return x
 
@@ -74,7 +69,7 @@ class WhisperEncoder(nn.Module):
 
         copy_w(self.stem[0], "conv1")
         copy_w(self.stem[2], "conv2")
-        self.pe.copy_(state_dict.pop("positional_embedding"))
+        self.pos_embs.copy_(state_dict.pop("positional_embedding"))
 
         for i, block in enumerate(self.encoder.layers):
             prefix = f"blocks.{i}"
@@ -91,6 +86,21 @@ class WhisperEncoder(nn.Module):
         copy_w(self.encoder.norm, "ln_post")
         if len(state_dict) > 0:
             print(state_dict.keys())
+
+
+class WhisperDecoder(nn.Module):
+    def __init__(self, vocab_size: int, n_layers: int, d_model: int, max_seq_len: int, dropout: float = 0.0) -> None:
+        super().__init__()
+        self.token_embs = nn.Embedding(vocab_size, d_model)
+        self.pos_embs = nn.Parameter(torch.zeros(max_seq_len, d_model))
+        self.decoder = Decoder(n_layers, d_model, cross_attn=True, dropout=dropout)
+
+    def forward(self, x: Tensor, memory: Tensor) -> Tensor:
+        x = self.token_embs(x)
+        x = x + self.pos_embs[: x.shape[1]]
+        x = self.decoder(x, memory)
+        x = x @ self.token_embs.weight.T  # weight-tying
+        return x
 
 
 class WhisperPreprocessor(MelSpectrogram):
