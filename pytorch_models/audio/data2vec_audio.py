@@ -36,34 +36,36 @@ class Data2VecAudio(Wav2Vec2):
         state_dict = state_dict.copy()  # shallow copy
 
         def copy_w(module: nn.Conv1d | nn.Linear | nn.LayerNorm, prefix: str):
-            module.weight.copy_(state_dict.pop(prefix + ".weight"))
+            module.weight.copy_(state_dict.pop(f"{prefix}.weight"))
             if module.bias is not None:
-                module.bias.copy_(state_dict.pop(prefix + ".bias"))
+                module.bias.copy_(state_dict.pop(f"{prefix}.bias"))
 
         for i, conv in enumerate(self.feature_encoder):
             prefix = f"feature_extractor.conv_layers.{i}"
-            copy_w(conv[0], prefix + ".conv")
+            copy_w(conv[0], f"{prefix}.conv")
             if not isinstance(conv[2], nn.Identity):
-                copy_w(conv[2], prefix + ".layer_norm")
+                copy_w(conv[2], f"{prefix}.layer_norm")
 
         copy_w(self.proj[0], "feature_projection.layer_norm")
         if len(self.proj) > 1:
             copy_w(self.proj[1], "feature_projection.projection")
 
         for i, layer in enumerate(self.pe_conv):
-            prefix = f"encoder.pos_conv_embed.layers.{i}"
-            copy_w(layer[0], prefix + ".conv")
+            copy_w(layer[0], f"encoder.pos_conv_embed.layers.{i}.conv")
 
         copy_w(self.transformer.norm, "encoder.layer_norm")
         for i, block in enumerate(self.transformer.layers):
             prefix = f"encoder.layers.{i}"
-            copy_w(block.mha.q_proj, prefix + ".attention.q_proj")
-            copy_w(block.mha.k_proj, prefix + ".attention.k_proj")
-            copy_w(block.mha.v_proj, prefix + ".attention.v_proj")
-            copy_w(block.mha.out_proj, prefix + ".attention.out_proj")
-            copy_w(block.norm1, prefix + ".layer_norm")
-            copy_w(block.mlp.linear1, prefix + ".feed_forward.intermediate_dense")
-            copy_w(block.mlp.linear2, prefix + ".feed_forward.output_dense")
-            copy_w(block.norm2, prefix + ".final_layer_norm")
+            state_dict.pop(f"{prefix}.attention.k_proj.bias")
+
+            copy_w(block.sa.q_proj, f"{prefix}.attention.q_proj")
+            copy_w(block.sa.k_proj, f"{prefix}.attention.k_proj")
+            copy_w(block.sa.v_proj, f"{prefix}.attention.v_proj")
+            copy_w(block.sa.out_proj, f"{prefix}.attention.out_proj")
+            copy_w(block.sa_norm, f"{prefix}.layer_norm")
+
+            copy_w(block.mlp.linear1, f"{prefix}.feed_forward.intermediate_dense")
+            copy_w(block.mlp.linear2, f"{prefix}.feed_forward.output_dense")
+            copy_w(block.mlp_norm, f"{prefix}.final_layer_norm")
 
         print(state_dict.keys())

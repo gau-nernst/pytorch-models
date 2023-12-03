@@ -60,7 +60,7 @@ class WhisperEncoder(nn.Module):
             url = f"https://openaipublic.azureedge.net/main/whisper/models/{ckpt_hash}/{model_tag}.pt"
             state_dict = torch.hub.load_state_dict_from_url(url, file_name=f"whisper_{model_tag}")
             state_dict = state_dict["model_state_dict"]
-            state_dict = {k.replace("encoder.", ""): v for k, v in state_dict.items() if k.startswith("encoder.")}
+            state_dict = {k.removeprefix("encoder."): v for k, v in state_dict.items() if k.startswith("encoder.")}
             m.load_openai_state_dict(state_dict)
 
         return m
@@ -68,9 +68,9 @@ class WhisperEncoder(nn.Module):
     @torch.no_grad()
     def load_openai_state_dict(self, state_dict: dict[str, Tensor]) -> None:
         def copy_w(module: nn.Conv1d | nn.Linear | nn.LayerNorm, prefix: str):
-            module.weight.copy_(state_dict.pop(prefix + ".weight"))
+            module.weight.copy_(state_dict.pop(f"{prefix}.weight"))
             if module.bias is not None:
-                module.bias.copy_(state_dict.pop(prefix + ".bias"))
+                module.bias.copy_(state_dict.pop(f"{prefix}.bias"))
 
         copy_w(self.stem[0], "conv1")
         copy_w(self.stem[2], "conv2")
@@ -78,14 +78,15 @@ class WhisperEncoder(nn.Module):
 
         for i, block in enumerate(self.encoder.layers):
             prefix = f"blocks.{i}"
-            copy_w(block.mha.q_proj, prefix + ".attn.query")
-            copy_w(block.mha.k_proj, prefix + ".attn.key")
-            copy_w(block.mha.v_proj, prefix + ".attn.value")
-            copy_w(block.mha.out_proj, prefix + ".attn.out")
-            copy_w(block.norm1, prefix + ".attn_ln")
-            copy_w(block.mlp.linear1, prefix + ".mlp.0")
-            copy_w(block.mlp.linear2, prefix + ".mlp.2")
-            copy_w(block.norm2, prefix + ".mlp_ln")
+            copy_w(block.sa.q_proj, f"{prefix}.attn.query")
+            copy_w(block.sa.k_proj, f"{prefix}.attn.key")
+            copy_w(block.sa.v_proj, f"{prefix}.attn.value")
+            copy_w(block.sa.out_proj, f"{prefix}.attn.out")
+            copy_w(block.sa_norm, f"{prefix}.attn_ln")
+
+            copy_w(block.mlp.linear1, f"{prefix}.mlp.0")
+            copy_w(block.mlp.linear2, f"{prefix}.mlp.2")
+            copy_w(block.mlp_norm, f"{prefix}.mlp_ln")
 
         copy_w(self.encoder.norm, "ln_post")
         if len(state_dict) > 0:

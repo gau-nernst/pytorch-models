@@ -30,12 +30,12 @@ class MHAPooling(nn.Module):
     ) -> None:
         super().__init__()
         self.probe = nn.Parameter(torch.zeros(1, 1, d_model))
-        self.mha = MHA(d_model, n_heads=n_heads, bias=bias)
+        self.attn = MHA(d_model, n_heads=n_heads, bias=bias)
         self.norm = nn.LayerNorm(d_model, layernorm_eps)
         self.mlp = MLP(d_model, int(d_model * mlp_ratio))
 
     def forward(self, x: Tensor) -> Tensor:
-        x = self.mha(self.probe, x).squeeze(1)
+        x = self.attn(self.probe, x).squeeze(1)
         x = x + self.mlp(self.norm(x))
         return x
 
@@ -178,17 +178,17 @@ class ViT(nn.Module):
         load_flax_ln(self.encoder.norm, jax_weights, "Transformer/encoder_norm")
 
         for i, layer in enumerate(self.encoder.layers):
-            load_flax_ln(layer.norm1, jax_weights, f"Transformer/encoderblock_{i}/{mha_norm}")
-            load_flax_mha(layer.mha, jax_weights, f"Transformer/encoderblock_{i}/{mha}")
+            load_flax_ln(layer.sa_norm, jax_weights, f"Transformer/encoderblock_{i}/{mha_norm}")
+            load_flax_mha(layer.sa, jax_weights, f"Transformer/encoderblock_{i}/{mha}")
 
-            load_flax_ln(layer.norm2, jax_weights, f"Transformer/encoderblock_{i}/{mlp_norm}")
+            load_flax_ln(layer.mlp_norm, jax_weights, f"Transformer/encoderblock_{i}/{mlp_norm}")
             load_flax_linear(layer.mlp.linear1, jax_weights, f"Transformer/encoderblock_{i}/{mlp}/Dense_0")
             load_flax_linear(layer.mlp.linear2, jax_weights, f"Transformer/encoderblock_{i}/{mlp}/Dense_1")
 
         # big_vision only
         if isinstance(self.pooler, MHAPooling):
             self.pooler.probe.copy_(jax_weights.pop("MAPHead_0/probe"))
-            load_flax_mha(self.pooler.mha, jax_weights, "MAPHead_0/MultiHeadDotProductAttention_0")
+            load_flax_mha(self.pooler.attn, jax_weights, "MAPHead_0/MultiHeadDotProductAttention_0")
             load_flax_ln(self.pooler.norm, jax_weights, "MAPHead_0/LayerNorm_0")
             load_flax_linear(self.pooler.mlp.linear1, jax_weights, "MAPHead_0/MlpBlock_0/Dense_0")
             load_flax_linear(self.pooler.mlp.linear2, jax_weights, "MAPHead_0/MlpBlock_0/Dense_1")
@@ -242,23 +242,23 @@ class ViT(nn.Module):
         copy_(self.encoder.norm, "norm")
         for i, layer in enumerate(self.encoder.layers):
             prefix = f"blocks.{i}"
-            copy_(layer.norm1, f"{prefix}.norm1")
-            copy_(layer.norm2, f"{prefix}.norm2")
+            copy_(layer.sa_norm, f"{prefix}.norm1")
+            copy_(layer.mlp_norm, f"{prefix}.norm2")
 
             q_w, k_w, v_w = state_dict.pop(f"{prefix}.attn.qkv.weight").chunk(3, 0)
-            layer.mha.q_proj.weight.copy_(q_w)
-            layer.mha.k_proj.weight.copy_(k_w)
-            layer.mha.v_proj.weight.copy_(v_w)
+            layer.sa.q_proj.weight.copy_(q_w)
+            layer.sa.k_proj.weight.copy_(k_w)
+            layer.sa.v_proj.weight.copy_(v_w)
 
             q_b, k_b, v_b = state_dict.pop(f"{prefix}.attn.qkv.bias").chunk(3, 0)
-            layer.mha.q_proj.bias.copy_(q_b)
-            # layer.mha.k_proj.bias.copy_(k_b)
-            layer.mha.v_proj.bias.copy_(v_b)
+            layer.sa.q_proj.bias.copy_(q_b)
+            # layer.sa.k_proj.bias.copy_(k_b)
+            layer.sa.v_proj.bias.copy_(v_b)
 
-            copy_(layer.mha.out_proj, f"{prefix}.attn.proj")
+            copy_(layer.sa.out_proj, f"{prefix}.attn.proj")
             scale = state_dict.pop(f"{prefix}.gamma_1")
-            layer.mha.out_proj.weight.mul_(scale.view(-1, 1))
-            layer.mha.out_proj.bias.mul_(scale)
+            layer.sa.out_proj.weight.mul_(scale.view(-1, 1))
+            layer.sa.out_proj.bias.mul_(scale)
 
             copy_(layer.mlp.linear1, f"{prefix}.mlp.fc1")
             copy_(layer.mlp.linear2, f"{prefix}.mlp.fc2")

@@ -65,19 +65,19 @@ class EncoderBlock(nn.Module):
         layernorm_eps: float = 1e-5,
     ) -> None:
         super().__init__()
-        self.norm1 = nn.LayerNorm(d_model, eps=layernorm_eps)
-        self.mha = MHA(d_model, n_heads, head_dim, bias, dropout)
-        self.norm2 = nn.LayerNorm(d_model, eps=layernorm_eps)
+        self.sa_norm = nn.LayerNorm(d_model, eps=layernorm_eps)
+        self.sa = MHA(d_model, n_heads, head_dim, bias, dropout)
+        self.mlp_norm = nn.LayerNorm(d_model, eps=layernorm_eps)
         self.mlp = MLP(d_model, int(d_model * mlp_ratio), dropout)
         self.pre_norm = pre_norm
 
     def forward(self, x: Tensor) -> Tensor:
         if self.pre_norm:
-            x = x + self.mha(self.norm1(x))
-            x = x + self.mlp(self.norm2(x))
+            x = x + self.sa(self.sa_norm(x))
+            x = x + self.mlp(self.mlp_norm(x))
         else:
-            x = self.norm1(x + self.mha(x))
-            x = self.norm2(x + self.mlp(x))
+            x = self.sa_norm(x + self.sa(x))
+            x = self.mlp_norm(x + self.mlp(x))
         return x
 
 
