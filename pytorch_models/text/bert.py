@@ -12,6 +12,8 @@ from ..transformer import Encoder
 
 
 # NOTE: token_type_embeddings, pooler, and classifier not included
+# latest google-research/bert use approximate GELU, though it's initial release used exact GELU
+# HF uses exact GELU. for simplicity, we use exact GELU
 class BERT(nn.Module):
     def __init__(
         self, vocab_size: int, n_layers: int, d_model: int, max_seq_len: int = 512, dropout: float = 0.0
