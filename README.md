@@ -57,7 +57,6 @@ Available models:
 - [Wav2Vec 2.0](https://arxiv.org/abs/2006.11477) / [HuBERT](https://arxiv.org/abs/2106.07447)
 - [SEW](https://arxiv.org/abs/2109.06870)
 - [data2vec](https://arxiv.org/abs/2202.03555) (audio)
-- [Whisper](https://arxiv.org/abs/2212.04356) (encoder)
 - [EnCodec](https://arxiv.org/abs/2210.13438) (encoder, decoder, and residual vector quantizer)
 
 TODO:
@@ -68,9 +67,11 @@ TODO:
 
 ## Audio-to-Text
 
-TODO:
+Available models:
 
 - [Whisper](https://arxiv.org/abs/2212.04356)
+  - TODO: add tokenizer
+  - TODO: support distilled Whipser
 
 ## Image-to-Text
 
@@ -153,20 +154,6 @@ model = Wav2Vec2.from_hf("facebook/wav2vec2-xls-r-300m", pretrained=True)  # als
 outputs = model(torch.randn(2, 16000))  # only supports mono audio. no channel dim.
 ```
 
-For `WhisperEncoder` (weights are from https://github.com/openai/whisper):
-
-```python
-import torch
-from pytorch_models.audio import WhisperEncoder, WhisperPreprocessor
-
-preprocessor = WhisperPreprocessor()
-model = WhisperEncoder.from_openai("tiny.en", pretrained=True)
-
-# TODO: add batch support for WhisperPreprocessor
-melspecs = preprocessor(torch.randn(16000))  # (80, 100)
-outputs = model(melspecs.unsqueeze(0))
-```
-
 For `EnCodec` (weights are from https://github.com/facebookresearch/encodec):
 
 ```python
@@ -185,4 +172,21 @@ codes, scale = model.encode(audio)
 
 # reconstruct audio from codes and scale
 reconstructed = model.decode(codes, scale)
+```
+
+### Audio-to-Text
+
+For `Whisper`:
+
+```python
+import torch
+from pytorch_models.audio import Whisper, WhisperPreprocessor
+
+preprocessor = WhisperPreprocessor()
+model = Whisper.from_openai("tiny.en", pretrained=True)
+
+audio = torch.randn(16000)  # 16kHz audio
+melspecs = preprocessor(audio)  # (80, 100)
+targets = torch.randint(200, size=(1, 32))
+outputs = model(melspecs.unsqueeze(0), targets)  # (1, 32)
 ```
