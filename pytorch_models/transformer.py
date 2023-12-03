@@ -31,15 +31,12 @@ class MHA(nn.Module):
         self.head_dim = head_dim
         self.dropout = dropout
 
-    def forward(
-        self, q: Tensor, k: Tensor | None = None, v: Tensor | None = None, attn_bias: Tensor | None = None
-    ) -> Tensor:
-        k = q if k is None else k
-        v = k if v is None else v
+    def forward(self, x: Tensor, memory: Tensor | None = None, attn_bias: Tensor | None = None) -> Tensor:
+        memory = x if memory is None else memory
 
-        q = self.q_proj(q).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)  # (*, n_heads, L, head_dim)
-        k = self.k_proj(k).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)
-        v = self.v_proj(v).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)
+        q = self.q_proj(x).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)  # (*, n_heads, L, head_dim)
+        k = self.k_proj(memory).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)
+        v = self.v_proj(memory).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)
 
         dropout = self.dropout if self.training else 0.0
         out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_bias, dropout_p=dropout)
