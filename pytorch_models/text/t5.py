@@ -144,8 +144,8 @@ class T5Model(nn.Module):
     def encode(self, x: Tensor) -> Tensor:
         return self.encoder(self.embed(x))
 
-    def decode(self, targets: Tensor, encoded: Tensor) -> Tensor:
-        return self.classifier(self.decoder(self.embed(targets), encoded))
+    def decode(self, x: Tensor, memory: Tensor) -> Tensor:
+        return self.classifier(self.decoder(self.embed(x), memory))
 
     def forward(self, x: Tensor, targets: Tensor) -> Tensor:
         return self.decode(targets, self.encode(x))
