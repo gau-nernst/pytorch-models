@@ -139,6 +139,6 @@ class WhisperPreprocessor(MelSpectrogram):
     def forward(self, x: Tensor) -> Tensor:
         x = super().forward(x)[..., :-1]
         x = x.clamp(0).log10()
-        x = x.maximum(x.max() - 8)
+        x = x.maximum(x.flatten(-2).max(-1, keepdim=True)[0].unsqueeze(-1) - 8)
         x = (x + 4) / 4
         return x

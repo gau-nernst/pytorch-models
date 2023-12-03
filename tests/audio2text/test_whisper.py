@@ -52,3 +52,14 @@ def test_preprocess():
     expected = whisper.log_mel_spectrogram(x)
 
     torch.testing.assert_close(actual, expected)
+
+
+def test_preprocess_batch():
+    preprocessor = WhisperPreprocessor()
+
+    x = torch.randn(4, 16_000)
+    x[0] += 0.5
+    actual = preprocessor(x)
+    expected = torch.stack([preprocessor(x[i]) for i in range(x.shape[0])], dim=0)
+
+    torch.testing.assert_close(actual, expected)
