@@ -25,6 +25,7 @@ Available models:
 - [ViT](https://arxiv.org/abs/2010.11929)
   - [`augreg`](https://arxiv.org/abs/2106.10270) weights: Ti/16, S/32, S/16, B/32, B/16, L/16
   - [`siglip`](https://arxiv.org/abs/2303.15343) weights: B/16 (224, 256, 384, 512), L/16 (256, 384)
+  - [`deit3`](https://arxiv.org/abs/2204.07118) weights: S/16, M/16, B/16, L/16, H/16 (layer scale and stochastic depth not implemented)
 - [MLP-Mixer](https://arxiv.org/abs/2105.01601)
   - `imagenet21k`, `imagenet1k`, or [`sam`](https://arxiv.org/abs/2010.01412) weights: B/16, L/16
   - [`gsam`](https://arxiv.org/abs/2203.08065) weights: S/32, S/16, S/8, B/32, B/16
@@ -91,6 +92,7 @@ import torch
 from pytorch_models.image import ViT
 
 model = ViT.from_google("B/16_augreg", pretrained=True)
+# model = ViT.from_deit3("B/16", pretrained=True)  # load DeiT-3 weights
 outputs = model(torch.randn(1, 3, 224, 224))  # (1, 768)
 
 model.resize_pe(256)  # resize positional embeddings to accept different input size
