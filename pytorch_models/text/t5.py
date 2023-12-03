@@ -61,9 +61,11 @@ class RelativePositionBias(nn.Module):
         # [n_buckets // 2, max_distance] -> log scale
         # [max_distance, infinity] -> clip
         max_exact = n_buckets // 2
-        scale = (n_buckets - max_exact) / math.log(self.max_distance / max_exact)
         eps = torch.finfo(torch.float32).eps
-        val_if_large = max_exact + torch.log(positions / max_exact + eps).mul(scale).long().clamp(max=n_buckets - 1)
+        scale = (n_buckets - max_exact) / math.log(self.max_distance / max_exact)
+
+        val_if_large = max_exact + (torch.log(positions / max_exact + eps) * scale).long()
+        val_if_large = val_if_large.clamp(max=n_buckets - 1)
 
         indices = torch.where(positions < max_exact, positions, val_if_large) + offsets
         return self.bias[:, indices.to(self.bias.device)]
@@ -108,7 +110,7 @@ class T5Stack(nn.Module):
     ) -> None:
         super().__init__()
         self.in_drop = nn.Dropout(dropout)
-        self.attn_bias = RelativePositionBias(n_heads, 32, 128)
+        self.attn_bias = RelativePositionBias(n_heads)
         self.layers = nn.Sequential(*[T5Block(dim, n_heads, mlp_dim, dropout, decoder) for _ in range(n_layers)])
         self.norm = LayerNorm(dim)
         self.out_drop = nn.Dropout(dropout)
@@ -199,6 +201,32 @@ class T5Model(nn.Module):
                     f.write(resp.content)
 
         return spm.SentencePieceProcessor(str(cache_path / "sentencepiece.model"))
+
+
+# TODO: refactor into a separate TextGenerator class
+class T5Generator(nn.Module):
+    def __init__(self, model_tag: str) -> None:
+        super().__init__()
+        self.model = T5Model.from_t5x(model_tag, pretrained=True).eval()
+        self.tokenizer = T5Model.get_tokenizer(model_tag)
+
+    @torch.no_grad()
+    def generate(self, prompt: str, max_tokens: int = 100) -> str:
+        device = next(self.parameters()).device
+
+        token_ids = self.tokenizer.Encode(prompt, add_eos=True)
+        output_ids = [self.tokenizer.pad_id()]
+        eos_id = self.tokenizer.eos_id()
+
+        encoded = self.model.encode(torch.tensor(token_ids, device=device))
+        while len(output_ids) < max_tokens:
+            # TODO: optimize data allocation
+            decoded = self.model.decode(torch.tensor(output_ids, device=device), encoded)
+            output_ids.append(decoded.argmax(-1)[-1].item())
+            if output_ids[-1] == eos_id:
+                break
+
+        return self.tokenizer.Decode(output_ids)
 
 
 def _rename_key(key: str) -> str:

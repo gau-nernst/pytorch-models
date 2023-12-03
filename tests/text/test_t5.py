@@ -4,8 +4,7 @@ import pytest
 import torch
 from transformers import T5ForConditionalGeneration
 
-# from generate import T5Generator
-from pytorch_models.text import T5Model, T5Stack
+from pytorch_models.text import T5Generator, T5Model, T5Stack
 
 
 dim, n_heads, n_layers, mlp_dim = 512, 6, 8, 1024  # small version
@@ -56,9 +55,9 @@ def test_against_hf():
     torch.testing.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
 
-# def test_generator():
-#     generator = T5Generator("small", checkpoint="flan_t5")
-#     prompt = "Translate to German. What is your name?"
+def test_generator():
+    generator = T5Generator("flan_t5-small")
+    prompt = "Translate to German. What is your name?"
 
-#     answer = generator.generate(prompt)
-#     assert answer == "Welches ist Ihres Namen?"
+    answer = generator.generate(prompt)
+    assert answer == "Welches ist Ihres Namen?"

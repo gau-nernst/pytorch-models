@@ -109,7 +109,7 @@ For `T5Model`
 
 ```python
 import torch
-from pytorch_models.text import T5Model
+from pytorch_models.text import T5Model, T5Generator
 
 model = T5Model.from_t5x("flan_t5-small", pretrained=True)
 tokenizer = T5Model.get_tokenizer("flan_t5-small")
@@ -127,6 +127,13 @@ encoded = model.encode(input_ids)  # call encoder
 decoded = model.decode(target_ids, encoded)  # call decoder
 
 decoded = model(input_ids, target_ids)  # same as above
+
+# using Generator wrapper (greedy decoding)
+generator = T5Generator("flan_t5-small")
+
+prompt = "Translate to German. What is your name?"
+answer = generator.generate(prompt)
+assert answer == "Welches ist Ihres Namen?"
 ```
 
 ### Audio
