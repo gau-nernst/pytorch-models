@@ -61,6 +61,11 @@ class MLPMixer(nn.Module):
 
     @staticmethod
     def from_google(model_tag: str, *, pretrained: bool = False, **kwargs) -> "MLPMixer":
+        if "_" in model_tag:
+            model_tag, weights = model_tag.split("_")
+        else:
+            weights = "gsam"
+
         size, patch_size = model_tag.split("/")
         patch_size = int(patch_size)
 
@@ -74,16 +79,8 @@ class MLPMixer(nn.Module):
         m = MLPMixer(n_layers, d_model, patch_size, **kwargs)
 
         if pretrained:
-            ckpt = {
-                "S/8": "gsam/Mixer-S_8.npz",
-                "S/16": "gsam/Mixer-S_16.npz",
-                "S/32": "gsam/Mixer-S_32.npz",
-                "B/16": "imagenet21k/Mixer-B_16.npz",  # also available: gsam, sam
-                "B/32": "gsam/Mixer-B_32.npz",  # also availale: sam
-                "L/16": "imagenet21k/Mixer-L_16.npz",
-            }[model_tag]
-            base_url = "https://storage.googleapis.com/mixer_models/"
-            m.load_jax_weights(torch_hub_download(base_url + ckpt))
+            url = f"https://storage.googleapis.com/mixer_models/{weights}/Mixer-{size}_{patch_size}.npz"
+            m.load_jax_weights(torch_hub_download(url))
 
         return m
 

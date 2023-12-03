@@ -10,7 +10,7 @@ def test_forward():
 
 
 def test_from_pretrained():
-    m = MLPMixer.from_google("B/16", pretrained=True).eval()
+    m = MLPMixer.from_google("B/16_imagenet21k", pretrained=True).eval()
     m_timm = timm.create_model("mixer_b16_224.goog_in21k", pretrained=True, num_classes=0).eval()
 
     x = torch.randn(1, 3, 224, 224)
