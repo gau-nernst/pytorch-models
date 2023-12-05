@@ -39,14 +39,15 @@ TODO:
 
 Available models:
 
-- [BERT](https://arxiv.org/abs/1810.04805) (all HF-compatible BERT)
+- [BERT](https://arxiv.org/abs/1810.04805) (all HF-compatible BERT and RoBERTa)
+  - Google weights: `bert-{base/large}-{uncased/cased}`, `bert-base-multilingual-{uncased/cased}`, `bert-base-chinese`, `bert-large-{uncased/cased}-whole-word-masking`, [mini BERT series](https://huggingface.co/collections/gaunernst/mini-bert-models-656ae9969ced9d5ff5184af0).
+  - RoBERTa seris: [`roberta-{base/large}`](https://arxiv.org/abs/1907.11692), [`xlm-roberta-{base/large}`](https://arxiv.org/abs/1911.02116), [`facebook/xlm-roberta-{xl/xxl}`](https://arxiv.org/abs/2105.00572)
   - TODO: add tokenizer
 - [T5](https://arxiv.org/pdf/1910.10683) / [Flan-T5](https://arxiv.org/abs/2210.11416) (T5 1.1 + LM-adapted, mT5 + LM-adapted, Flan-T5)
   - `msgpack` is required for loading pre-trained checkpoints. `sentencepiece` is required to use the tokenizer.
 
 TODO:
 
-- [RoBERTa](https://arxiv.org/abs/1907.11692)
 - [GPT-1](https://cdn.openai.com/research-covers/language-unsupervised/language_understanding_paper.pdf)
 - [GPT-2](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf)
 
@@ -101,7 +102,7 @@ outputs = model(torch.randn(1, 3, 256, 256))  # (1, 768)
 
 ### Text
 
-For `BERT`
+For `BERT` and `RoBERTa`
 
 ```python
 import torch
