@@ -50,7 +50,7 @@ class BERT(nn.Module):
             raise ValueError(f"Unsupported model {model_tag}")
 
         # RoBERTa skips the first 2 position embeddings for no good reasons
-        if config["model_type"] == "roberta":
+        if "roberta" in config["model_type"]:
             config["max_position_embeddings"] -= 2
 
         m = BERT(
