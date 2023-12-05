@@ -16,13 +16,19 @@ from ..transformer import Encoder
 # HF uses exact GELU. for simplicity, we use exact GELU
 class BERT(nn.Module):
     def __init__(
-        self, vocab_size: int, n_layers: int, d_model: int, max_seq_len: int = 512, dropout: float = 0.0
+        self,
+        vocab_size: int,
+        n_layers: int,
+        d_model: int,
+        max_seq_len: int = 512,
+        dropout: float = 0.0,
+        layernorm_eps: float = 1e-12,
     ) -> None:
         super().__init__()
         vocab_size = math.ceil(vocab_size / 64) * 64  # pad to multiple of 64
         self.token_embs = nn.Embedding(vocab_size, d_model)
         self.pos_embs = nn.Parameter(torch.zeros(max_seq_len, d_model))
-        self.encoder = Encoder(n_layers, d_model, dropout=dropout, pre_norm=False, layernorm_eps=1e-12)
+        self.encoder = Encoder(n_layers, d_model, dropout=dropout, pre_norm=False, layernorm_eps=layernorm_eps)
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.token_embs(x)
@@ -43,11 +49,16 @@ class BERT(nn.Module):
         if config is None:
             raise ValueError(f"Unsupported model {model_tag}")
 
+        # RoBERTa skips the first 2 position embeddings for no good reasons
+        if config["model_type"] == "roberta":
+            config["max_position_embeddings"] -= 2
+
         m = BERT(
             vocab_size=config["vocab_size"],
             n_layers=config["num_hidden_layers"],
             d_model=config["hidden_size"],
             max_seq_len=config["max_position_embeddings"],
+            layernorm_eps=config["layer_norm_eps"],
             **kwargs,
         )
 
@@ -60,7 +71,8 @@ class BERT(nn.Module):
 
     @torch.no_grad()
     def load_hf_state_dict(self, state_dict: dict[str, Tensor]) -> None:
-        state_dict = {k.removeprefix("bert."): v for k, v in state_dict.items() if k.startswith("bert.")}
+        is_roberta = any(k.startswith("roberta.") for k in state_dict.keys())
+        state_dict = {k.removeprefix("bert.").removeprefix("roberta."): v for k, v in state_dict.items()}
 
         def copy_(module: nn.Linear | nn.LayerNorm, prefix: str):
             module.weight.copy_(state_dict.pop(f"{prefix}.weight"))
@@ -71,10 +83,13 @@ class BERT(nn.Module):
         self.token_embs.weight[: token_embs.shape[0]] = token_embs
 
         # we merge token_type_embs to pos_embs
-        self.pos_embs.copy_(state_dict.pop("embeddings.position_embeddings.weight"))
-        self.pos_embs.add_(state_dict.pop("embeddings.token_type_embeddings.weight")[0])
-        copy_(self.encoder.norm, "embeddings.LayerNorm")
+        pos_embs = state_dict.pop("embeddings.position_embeddings.weight")
+        if is_roberta:  # remove the unused first 2 positional embeddings in RoBERTa
+            pos_embs = pos_embs[2:]
+        token_type_emb = state_dict.pop("embeddings.token_type_embeddings.weight")[0]
+        self.pos_embs.copy_(pos_embs + token_type_emb)
 
+        copy_(self.encoder.norm, "embeddings.LayerNorm")
         for i, layer in enumerate(self.encoder.layers):
             prefix = f"encoder.layer.{i}"
             state_dict.pop(f"{prefix}.attention.self.key.bias")
