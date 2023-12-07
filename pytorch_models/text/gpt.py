@@ -30,13 +30,13 @@ class GPT(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.token_embs(x)
-        x = x + self.pos_embs[: x.shape[-1]]
+        x = x + self.pos_embs[: x.shape[-2]]
         x = self.layers(x)
         logits = x @ self.token_embs.weight.T
         return logits
 
     @staticmethod
-    def from_openai(*, pretrained=True, **kwargs) -> "GPT":
+    def from_openai(*, pretrained=False, **kwargs) -> "GPT":
         m = GPT(**kwargs)
 
         if pretrained:
@@ -55,3 +55,38 @@ class GPT(nn.Module):
             params = np.concatenate(shards, axis=0)
             params = np.split(params, offsets)[:-1]
             params = [param.reshape(shape) for param, shape in zip(params, shapes)]
+
+            params = [torch.from_numpy(p) for p in params]
+
+            with torch.no_grad():
+                m.pos_embs.copy_(params[0])
+                m.token_embs.weight[: params[1].shape[0]] = params[1]
+
+                n = 12
+                for i, layer in enumerate(m.layers):
+                    w_q, w_k, w_v = params[2 + i * n].squeeze(0).chunk(3, -1)
+                    layer.sa.q_proj.weight.copy_(w_q.T)
+                    layer.sa.k_proj.weight.copy_(w_k.T)
+                    layer.sa.v_proj.weight.copy_(w_v.T)
+
+                    b_q, b_k, b_v = params[3 + i * n].chunk(3, -1)
+                    layer.sa.q_proj.bias.copy_(b_q)
+                    layer.sa.k_proj.bias.copy_(b_k)
+                    layer.sa.v_proj.bias.copy_(b_v)
+
+                    layer.sa.out_proj.weight.copy_(params[4 + i * n].squeeze(0).T)
+                    layer.sa.out_proj.bias.copy_(params[5 + i * n])
+
+                    layer.sa_norm.weight.copy_(params[6 + i * n])
+                    layer.sa_norm.bias.copy_(params[7 + i * n])
+
+                    layer.mlp.linear1.weight.copy_(params[8 + i * n].squeeze(0).T)
+                    layer.mlp.linear1.bias.copy_(params[9 + i * n])
+
+                    layer.mlp.linear2.weight.copy_(params[10 + i * n].squeeze(0).T)
+                    layer.mlp.linear2.bias.copy_(params[11 + i * n])
+
+                    layer.mlp_norm.weight.copy_(params[12 + i * n])
+                    layer.mlp_norm.bias.copy_(params[13 + i * n])
+
+        return m
