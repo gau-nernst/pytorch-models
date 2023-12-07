@@ -1,5 +1,7 @@
 # https://arxiv.org/abs/1706.03762
 
+from functools import partial
+
 import torch.nn.functional as F
 from torch import Tensor, nn
 
@@ -46,10 +48,13 @@ class MHA(nn.Module):
 
 
 class MLP(nn.Sequential):
-    def __init__(self, in_dim: int, hidden_dim: float, dropout: float = 0.0) -> None:
+    def __init__(self, in_dim: int, hidden_dim: float, dropout: float = 0.0, act: str = "gelu") -> None:
         super().__init__()
         self.linear1 = nn.Linear(in_dim, hidden_dim)
-        self.act = nn.GELU()
+        self.act = dict(
+            gelu=nn.GELU,
+            approximate_gelu=partial(nn.GELU, approximate="tanh"),
+        )[act]()
         self.linear2 = nn.Linear(hidden_dim, in_dim)
         self.dropout = nn.Dropout(dropout)
 
@@ -64,6 +69,7 @@ class DecoderBlock(nn.Module):
         bias: bool = True,
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
+        act: str = "gelu",
         pre_norm: bool = True,
         norm_eps: float = 1e-5,
     ) -> None:
@@ -77,7 +83,7 @@ class DecoderBlock(nn.Module):
         self.ca = MHA(d_model, n_heads, head_dim, bias, dropout) if cross_attn else None
 
         self.mlp_norm = nn.LayerNorm(d_model, norm_eps)
-        self.mlp = MLP(d_model, int(d_model * mlp_ratio), dropout)
+        self.mlp = MLP(d_model, int(d_model * mlp_ratio), dropout, act)
 
     def forward(self, x: Tensor, memory: Tensor | None = None) -> Tensor:
         if self.pre_norm:
@@ -100,10 +106,11 @@ class EncoderBlock(DecoderBlock):
         bias: bool = True,
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
+        act: str = "gelu",
         pre_norm: bool = True,
         norm_eps: float = 1e-5,
     ) -> None:
-        super().__init__(d_model, n_heads, head_dim, False, bias, mlp_ratio, dropout, pre_norm, norm_eps)
+        super().__init__(d_model, n_heads, head_dim, False, bias, mlp_ratio, dropout, act, pre_norm, norm_eps)
 
     def forward(self, x: Tensor) -> Tensor:
         if self.pre_norm:
@@ -125,12 +132,13 @@ class Encoder(nn.Sequential):
         bias: bool = True,
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
+        act: str = "gelu",
         pre_norm: bool = True,
         norm_eps: float = 1e-5,
     ) -> None:
         super().__init__()
         for _ in range(n_layers):
-            self.append(EncoderBlock(d_model, n_heads, head_dim, bias, mlp_ratio, dropout, pre_norm, norm_eps))
+            self.append(EncoderBlock(d_model, n_heads, head_dim, bias, mlp_ratio, dropout, act, pre_norm, norm_eps))
 
 
 class Decoder(nn.ModuleList):
@@ -144,13 +152,14 @@ class Decoder(nn.ModuleList):
         bias: bool = True,
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
+        act: str = "gelu",
         pre_norm: bool = True,
         norm_eps: float = 1e-5,
     ) -> None:
         super().__init__()
         for _ in range(n_layers):
             self.append(
-                DecoderBlock(d_model, n_heads, head_dim, cross_attn, bias, mlp_ratio, dropout, pre_norm, norm_eps)
+                DecoderBlock(d_model, n_heads, head_dim, cross_attn, bias, mlp_ratio, dropout, act, pre_norm, norm_eps)
             )
 
     def forward(self, x: Tensor, memory: Tensor | None = None) -> Tensor:
