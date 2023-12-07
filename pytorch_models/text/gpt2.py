@@ -56,7 +56,8 @@ class GPT2(nn.Module):
         state_dict = {k.removeprefix("transformer."): v for k, v in state_dict.items()}
 
         def copy_(module: nn.Linear | nn.LayerNorm, prefix: str):
-            module.weight.copy_(state_dict.pop(f"{prefix}.weight"))
+            w = state_dict.pop(f"{prefix}.weight")
+            module.weight.copy_(w.T if w.ndim == 2 else w)
             if module.bias is not None:
                 module.bias.copy_(state_dict.pop(f"{prefix}.bias"))
 
@@ -69,10 +70,10 @@ class GPT2(nn.Module):
             copy_(layer.sa_norm, f"{prefix}.ln_1")
             copy_(layer.sa.out_proj, f"{prefix}.attn.c_proj")
 
-            w_q, w_k, w_v = state_dict.pop(f"{prefix}.attn.c_attn.weight").squeeze(-1).chunk(3, 0)
-            layer.sa.q_proj.weight.copy_(w_q)
-            layer.sa.k_proj.weight.copy_(w_k)
-            layer.sa.v_proj.weight.copy_(w_v)
+            w_q, w_k, w_v = state_dict.pop(f"{prefix}.attn.c_attn.weight").chunk(3, 1)
+            layer.sa.q_proj.weight.copy_(w_q.T)
+            layer.sa.k_proj.weight.copy_(w_k.T)
+            layer.sa.v_proj.weight.copy_(w_v.T)
 
             b_q, b_k, b_v = state_dict.pop(f"{prefix}.attn.c_attn.bias").chunk(3, 0)
             layer.sa.q_proj.bias.copy_(b_q)
