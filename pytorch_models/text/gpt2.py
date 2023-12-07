@@ -67,7 +67,7 @@ class GPT2(nn.Module):
         for i, layer in enumerate(self.layers):
             prefix = f"h.{i}"
             copy_(layer.sa_norm, f"{prefix}.ln_1")
-            copy_(layer.sa.out_proj, f"{prefix}.c_proj")
+            copy_(layer.sa.out_proj, f"{prefix}.attn.c_proj")
 
             w_q, w_k, w_v = state_dict.pop(f"{prefix}.attn.c_attn.weight").squeeze(-1).chunk(3, 0)
             layer.sa.q_proj.weight.copy_(w_q)
