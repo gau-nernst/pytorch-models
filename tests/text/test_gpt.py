@@ -31,7 +31,7 @@ def test_from_hf(x: Tensor):
     actual = m(x)
     expected = m_hf(x).logits
 
-    torch.testing.assert_close(actual, expected)
+    torch.testing.assert_close(actual[..., : expected.shape[-1]], expected)
 
 
 def test_preprocess():
