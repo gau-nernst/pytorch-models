@@ -37,7 +37,7 @@ class GPT2(nn.Module):
     def from_hf(model_tag: str, *, pretrained=False, **kwargs) -> "GPT2":
         n_layers, d_model = {
             "gpt2": (12, 768),
-            "gpt2-medium": (25, 1024),
+            "gpt2-medium": (24, 1024),
             "gpt2-large": (36, 1280),
             "gpt2-xl": (48, 1600),
         }[model_tag]
