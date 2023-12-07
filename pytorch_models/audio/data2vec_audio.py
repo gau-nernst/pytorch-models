@@ -56,8 +56,6 @@ class Data2VecAudio(Wav2Vec2):
         copy_w(self.transformer.norm, "encoder.layer_norm")
         for i, block in enumerate(self.transformer.layers):
             prefix = f"encoder.layers.{i}"
-            state_dict.pop(f"{prefix}.attention.k_proj.bias")
-
             copy_w(block.sa.q_proj, f"{prefix}.attention.q_proj")
             copy_w(block.sa.k_proj, f"{prefix}.attention.k_proj")
             copy_w(block.sa.v_proj, f"{prefix}.attention.v_proj")

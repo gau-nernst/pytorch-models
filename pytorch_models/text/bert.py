@@ -92,8 +92,6 @@ class BERT(nn.Module):
         copy_(self.encoder.norm, "embeddings.LayerNorm")
         for i, layer in enumerate(self.encoder.layers):
             prefix = f"encoder.layer.{i}"
-            state_dict.pop(f"{prefix}.attention.self.key.bias")
-
             copy_(layer.sa.q_proj, f"{prefix}.attention.self.query")
             copy_(layer.sa.k_proj, f"{prefix}.attention.self.key")
             copy_(layer.sa.v_proj, f"{prefix}.attention.self.value")
