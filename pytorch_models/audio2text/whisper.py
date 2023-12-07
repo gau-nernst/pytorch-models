@@ -96,7 +96,7 @@ class Whisper(nn.Module):
         def copy_w(module: nn.Conv1d | nn.Linear | nn.LayerNorm, prefix: str):
             module.weight.copy_(state_dict.pop(f"{prefix}.weight"))
             if module.bias is not None:
-                module.bias.copy_(state_dict.pop(f"{prefix}.bias"))
+                module.bias.copy_(state_dict.pop(f"{prefix}.bias", 0))
 
         copy_w(self.encoder.stem[0], "encoder.conv1")
         copy_w(self.encoder.stem[2], "encoder.conv2")
