@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch import Tensor
-from transformers import AutoModel
+from transformers import OpenAIGPTLMHeadModel
 
 from pytorch_models.text import GPT
 
@@ -26,7 +26,7 @@ def test_compile(x: Tensor):
 @torch.no_grad()
 def test_from_hf(x: Tensor):
     m = GPT.from_openai(pretrained=True).eval()
-    m_hf = AutoModel.from_pretrained("openai-gpt").eval()
+    m_hf = OpenAIGPTLMHeadModel.from_pretrained("openai-gpt").eval()
 
     actual = m(x)
     expected = m_hf(x).logits
