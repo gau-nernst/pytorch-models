@@ -85,3 +85,9 @@ class GPT2(nn.Module):
 
         copy_(self.norm, f"ln_f")
         print(state_dict.keys())
+
+    @staticmethod
+    def get_tokenizer():
+        from tiktoken import get_encoding
+
+        return get_encoding("gpt2")
