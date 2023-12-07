@@ -31,7 +31,7 @@ class SEW(Wav2Vec2):
         T = x.shape[1]
         x = x.transpose(1, 2)
         x = F.avg_pool1d(x, 2) + self.pe_conv(x)
-        x = self.transformer(x.transpose(1, 2))
+        x = self.layers(self.norm(x.transpose(1, 2)))
         x = self.upsample(x).unflatten(2, (2, -1)).flatten(1, 2)
         if x.shape[1] < T:
             x = F.pad(x, (0, 0, 0, T - x.shape[1]))
@@ -63,18 +63,18 @@ class SEW(Wav2Vec2):
         self.pe_conv[1].weight.copy_(weight_g * F.normalize(weight_v, dim=(0, 1)))
         self.pe_conv[1].bias.copy_(state_dict.pop(f"{prefix}.bias"))
 
-        copy_w(self.transformer.norm, "encoder.layer_norm")
-        for i, block in enumerate(self.transformer.layers):
+        copy_w(self.norm, "encoder.layer_norm")
+        for i, layer in enumerate(self.layers):
             prefix = f"encoder.layers.{i}"
-            copy_w(block.sa.q_proj, f"{prefix}.attention.q_proj")
-            copy_w(block.sa.k_proj, f"{prefix}.attention.k_proj")
-            copy_w(block.sa.v_proj, f"{prefix}.attention.v_proj")
-            copy_w(block.sa.out_proj, f"{prefix}.attention.out_proj")
-            copy_w(block.sa_norm, f"{prefix}.layer_norm")
+            copy_w(layer.sa.q_proj, f"{prefix}.attention.q_proj")
+            copy_w(layer.sa.k_proj, f"{prefix}.attention.k_proj")
+            copy_w(layer.sa.v_proj, f"{prefix}.attention.v_proj")
+            copy_w(layer.sa.out_proj, f"{prefix}.attention.out_proj")
+            copy_w(layer.sa_norm, f"{prefix}.layer_norm")
 
-            copy_w(block.mlp.linear1, f"{prefix}.feed_forward.intermediate_dense")
-            copy_w(block.mlp.linear2, f"{prefix}.feed_forward.output_dense")
-            copy_w(block.mlp_norm, f"{prefix}.final_layer_norm")
+            copy_w(layer.mlp.linear1, f"{prefix}.feed_forward.intermediate_dense")
+            copy_w(layer.mlp.linear2, f"{prefix}.feed_forward.output_dense")
+            copy_w(layer.mlp_norm, f"{prefix}.final_layer_norm")
 
         copy_w(self.upsample[0], "encoder.upsample.projection")
         print(state_dict.keys())
