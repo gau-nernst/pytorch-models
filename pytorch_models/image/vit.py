@@ -252,7 +252,7 @@ class ViT(nn.Module):
 
             q_b, k_b, v_b = state_dict.pop(f"{prefix}.attn.qkv.bias").chunk(3, 0)
             layer.sa.q_proj.bias.copy_(q_b)
-            # layer.sa.k_proj.bias.copy_(k_b)
+            layer.sa.k_proj.bias.copy_(k_b)
             layer.sa.v_proj.bias.copy_(v_b)
 
             copy_(layer.sa.out_proj, f"{prefix}.attn.proj")
