@@ -29,7 +29,7 @@ class Data2VecAudio(Wav2Vec2):
             )
             self.pe_conv.append(layer)
 
-        self.transformer = Encoder(n_layers, d_model, dropout=dropout, pre_norm=False)
+        self.layers = Encoder(n_layers, d_model, dropout=dropout, pre_norm=False)
         self.norm = nn.LayerNorm(d_model)
         self.pre_norm = False
 
