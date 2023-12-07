@@ -41,16 +41,16 @@ class MLPMixer(nn.Module):
         img_size: int = 224,
         mlp_ratio: tuple[float, float] = (0.5, 4.0),
         dropout: float = 0.0,
-        layernorm_eps: float = 1e-6,
+        norm_eps: float = 1e-6,
     ) -> None:
         assert img_size % patch_size == 0
         super().__init__()
         self.patch_embed = nn.Conv2d(3, d_model, patch_size, patch_size)
         n_tokens = (img_size // patch_size) ** 2
         self.layers = nn.Sequential(
-            *[MixerBlock(n_tokens, d_model, mlp_ratio, dropout, layernorm_eps) for _ in range(n_layers)]
+            *[MixerBlock(n_tokens, d_model, mlp_ratio, dropout, norm_eps) for _ in range(n_layers)]
         )
-        self.norm = nn.LayerNorm(d_model, layernorm_eps)
+        self.norm = nn.LayerNorm(d_model, norm_eps)
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.patch_embed(x).flatten(2).transpose(1, 2)  # (N, C, H, W) -> (N, H*W, C)

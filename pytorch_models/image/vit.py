@@ -26,12 +26,12 @@ class GlobalAveragePooling(nn.Module):
 
 class MHAPooling(nn.Module):
     def __init__(
-        self, d_model: int, n_heads: int, bias: bool = True, mlp_ratio: float = 4.0, layernorm_eps: float = 1e-6
+        self, d_model: int, n_heads: int, bias: bool = True, mlp_ratio: float = 4.0, norm_eps: float = 1e-6
     ) -> None:
         super().__init__()
         self.probe = nn.Parameter(torch.zeros(1, 1, d_model))
         self.attn = MHA(d_model, n_heads=n_heads, bias=bias)
-        self.norm = nn.LayerNorm(d_model, layernorm_eps)
+        self.norm = nn.LayerNorm(d_model, norm_eps)
         self.mlp = MLP(d_model, int(d_model * mlp_ratio))
 
     def forward(self, x: Tensor) -> Tensor:
@@ -53,7 +53,7 @@ class ViT(nn.Module):
         cls_token: bool = True,
         pool_type: str = "cls_token",
         dropout: float = 0.0,
-        layernorm_eps: float = 1e-6,
+        norm_eps: float = 1e-6,
     ) -> None:
         assert img_size % patch_size == 0
         super().__init__()
@@ -61,13 +61,13 @@ class ViT(nn.Module):
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model)) if cls_token else None
         self.pe = nn.Parameter(torch.zeros(1, (img_size // patch_size) ** 2, d_model))
 
-        self.layers = Encoder(n_layers, d_model, n_heads=n_heads, dropout=dropout, layernorm_eps=layernorm_eps)
+        self.layers = Encoder(n_layers, d_model, n_heads=n_heads, dropout=dropout, norm_eps=norm_eps)
         self.norm = nn.LayerNorm(d_model)
 
         self.pooler = dict(
             cls_token=ClassTokenPooling,
             gap=GlobalAveragePooling,
-            mha=partial(MHAPooling, d_model, n_heads, layernorm_eps=layernorm_eps),
+            mha=partial(MHAPooling, d_model, n_heads, norm_eps=norm_eps),
         )[pool_type]()
 
     def forward(self, imgs: Tensor) -> Tensor:

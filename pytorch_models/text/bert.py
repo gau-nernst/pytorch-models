@@ -22,14 +22,14 @@ class BERT(nn.Module):
         d_model: int,
         max_seq_len: int = 512,
         dropout: float = 0.0,
-        layernorm_eps: float = 1e-12,
+        norm_eps: float = 1e-12,
     ) -> None:
         super().__init__()
         vocab_size = math.ceil(vocab_size / 64) * 64  # pad to multiple of 64
         self.token_embs = nn.Embedding(vocab_size, d_model)
         self.pos_embs = nn.Parameter(torch.zeros(max_seq_len, d_model))
         self.norm = nn.LayerNorm(d_model)
-        self.layers = Encoder(n_layers, d_model, dropout=dropout, pre_norm=False, layernorm_eps=layernorm_eps)
+        self.layers = Encoder(n_layers, d_model, dropout=dropout, pre_norm=False, norm_eps=norm_eps)
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.token_embs(x)
@@ -60,7 +60,7 @@ class BERT(nn.Module):
             n_layers=config["num_hidden_layers"],
             d_model=config["hidden_size"],
             max_seq_len=config["max_position_embeddings"],
-            layernorm_eps=config["layer_norm_eps"],
+            norm_eps=config["layer_norm_eps"],
             **kwargs,
         )
 
