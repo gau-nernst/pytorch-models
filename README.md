@@ -45,11 +45,14 @@ Available models:
   - TODO: add tokenizer
 - [T5](https://arxiv.org/pdf/1910.10683) / [Flan-T5](https://arxiv.org/abs/2210.11416) (T5 1.1 + LM-adapted, mT5 + LM-adapted, Flan-T5)
   - `msgpack` is required for loading pre-trained checkpoints. `sentencepiece` is required to use the tokenizer.
+- [GPT](https://cdn.openai.com/research-covers/language-unsupervised/language_understanding_paper.pdf) (aka GPT-1): L12 H768 (BERT-Base equivalent)
+- [GPT-2](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf): `gpt2` (L12 H768), `gpt2-medium` (L24 H1024), `gpt2-large` (L36 H1280), `gpt2-xl` (L48 H1600)
 
 TODO:
 
-- [GPT-1](https://cdn.openai.com/research-covers/language-unsupervised/language_understanding_paper.pdf)
-- [GPT-2](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf)
+- Llama
+- BART/mBART
+- NLLB
 
 ## Audio
 
