@@ -26,12 +26,12 @@ class GPT(nn.Module):
         vocab_size = math.ceil(vocab_size / 64) * 64  # pad to multiple of 64
         self.token_embs = nn.Embedding(vocab_size, d_model)
         self.pos_embs = nn.Parameter(torch.zeros(max_seq_len, d_model))
-        self.decoder = Decoder(n_layers, d_model, dropout=dropout, pre_norm=False, layernorm_eps=1e-5)
+        self.layers = Decoder(n_layers, d_model, dropout=dropout, pre_norm=False)
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.token_embs(x)
         x = x + self.pos_embs[: x.shape[-1]]
-        x = self.decoder(x)
+        x = self.layers(x)
         logits = x @ self.token_embs.weight.T
         return logits
 

@@ -52,7 +52,6 @@ class ViT(nn.Module):
         img_size: int = 224,
         cls_token: bool = True,
         pool_type: str = "cls_token",
-        bias: bool = True,
         dropout: float = 0.0,
         layernorm_eps: float = 1e-6,
     ) -> None:
@@ -62,14 +61,13 @@ class ViT(nn.Module):
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model)) if cls_token else None
         self.pe = nn.Parameter(torch.zeros(1, (img_size // patch_size) ** 2, d_model))
 
-        self.encoder = Encoder(
-            n_layers, d_model, n_heads=n_heads, bias=bias, dropout=dropout, layernorm_eps=layernorm_eps
-        )
+        self.layers = Encoder(n_layers, d_model, n_heads=n_heads, dropout=dropout, layernorm_eps=layernorm_eps)
+        self.norm = nn.LayerNorm(d_model)
 
         self.pooler = dict(
             cls_token=ClassTokenPooling,
             gap=GlobalAveragePooling,
-            mha=partial(MHAPooling, d_model, n_heads, bias, layernorm_eps=layernorm_eps),
+            mha=partial(MHAPooling, d_model, n_heads, layernorm_eps=layernorm_eps),
         )[pool_type]()
 
     def forward(self, imgs: Tensor) -> Tensor:
@@ -77,7 +75,8 @@ class ViT(nn.Module):
         out = out + self.pe
         if self.cls_token is not None:
             out = torch.cat([self.cls_token, out], 1)
-        out = self.encoder(out)
+        out = self.layers(out)
+        out = self.norm(out)
         out = self.pooler(out)
         return out
 
@@ -175,9 +174,9 @@ class ViT(nn.Module):
             self.cls_token.add_(pe[:, 0])
             self.pe.copy_(pe[:, 1:])
         load_flax_conv2d(self.patch_embed, jax_weights, "embedding")
-        load_flax_ln(self.encoder.norm, jax_weights, "Transformer/encoder_norm")
+        load_flax_ln(self.norm, jax_weights, "Transformer/encoder_norm")
 
-        for i, layer in enumerate(self.encoder.layers):
+        for i, layer in enumerate(self.layers):
             load_flax_ln(layer.sa_norm, jax_weights, f"Transformer/encoderblock_{i}/{mha_norm}")
             load_flax_mha(layer.sa, jax_weights, f"Transformer/encoderblock_{i}/{mha}")
 
@@ -239,8 +238,8 @@ class ViT(nn.Module):
         if pe.shape[1] > self.pe.shape[1]:
             self.cls_token.add_(pe[:, 0])
 
-        copy_(self.encoder.norm, "norm")
-        for i, layer in enumerate(self.encoder.layers):
+        copy_(self.norm, "norm")
+        for i, layer in enumerate(self.layers):
             prefix = f"blocks.{i}"
             copy_(layer.sa_norm, f"{prefix}.norm1")
             copy_(layer.mlp_norm, f"{prefix}.norm2")

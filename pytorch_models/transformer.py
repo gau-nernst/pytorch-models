@@ -115,7 +115,7 @@ class EncoderBlock(DecoderBlock):
         return x
 
 
-class Encoder(nn.Module):
+class Encoder(nn.Sequential):
     def __init__(
         self,
         n_layers: int,
@@ -129,19 +129,11 @@ class Encoder(nn.Module):
         layernorm_eps: float = 1e-5,
     ) -> None:
         super().__init__()
-        self.layers = nn.Sequential()
         for _ in range(n_layers):
-            self.layers.append(
-                EncoderBlock(d_model, n_heads, head_dim, bias, mlp_ratio, dropout, pre_norm, layernorm_eps)
-            )
-        self.norm = nn.LayerNorm(d_model, eps=layernorm_eps)
-        self.pre_norm = pre_norm
-
-    def forward(self, x: Tensor) -> Tensor:
-        return self.norm(self.layers(x)) if self.pre_norm else self.layers(self.norm(x))
+            self.append(EncoderBlock(d_model, n_heads, head_dim, bias, mlp_ratio, dropout, pre_norm, layernorm_eps))
 
 
-class Decoder(nn.Module):
+class Decoder(nn.ModuleList):
     def __init__(
         self,
         n_layers: int,
@@ -156,17 +148,12 @@ class Decoder(nn.Module):
         layernorm_eps: float = 1e-5,
     ) -> None:
         super().__init__()
-        self.layers = nn.ModuleList()
         for _ in range(n_layers):
-            self.layers.append(
+            self.append(
                 DecoderBlock(d_model, n_heads, head_dim, cross_attn, bias, mlp_ratio, dropout, pre_norm, layernorm_eps)
             )
-        self.norm = nn.LayerNorm(d_model, eps=layernorm_eps)
-        self.pre_norm = pre_norm
 
     def forward(self, x: Tensor, memory: Tensor | None = None) -> Tensor:
-        x = self.norm(x) if not self.pre_norm else x
-        for layer in self.layers:
+        for layer in self:
             x = layer(x, memory)
-        x = self.norm(x) if self.pre_norm else x
         return x

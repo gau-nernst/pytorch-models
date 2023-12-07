@@ -71,7 +71,9 @@ class Wav2Vec2(nn.Module):
             nn.Conv1d(d_model, d_model, self.PE_KERNEL, groups=self.PE_GROUPS),
             nn.GELU(),
         )
-        self.transformer = Encoder(n_layers, d_model, dropout=dropout, pre_norm=pre_norm)
+        self.layers = Encoder(n_layers, d_model, dropout=dropout, pre_norm=pre_norm)
+        self.norm = nn.LayerNorm(d_model)
+        self.pre_norm = pre_norm
 
     def forward(self, x: Tensor) -> Tensor:
         # x: (B, L)
@@ -79,7 +81,7 @@ class Wav2Vec2(nn.Module):
         x = self.proj(x)
 
         x = x + self.pe_conv(x.transpose(1, 2)).transpose(1, 2)
-        x = self.transformer(x)
+        x = self.norm(self.layers(x)) if self.pre_norm else self.layers(self.norm(x))
         return x
 
     @classmethod
@@ -134,17 +136,17 @@ class Wav2Vec2(nn.Module):
         self.pe_conv[1].weight.copy_(weight_g * F.normalize(weight_v, dim=(0, 1)))
         self.pe_conv[1].bias.copy_(state_dict.pop(f"{prefix}.bias"))
 
-        copy_w(self.transformer.norm, "encoder.layer_norm")
-        for i, block in enumerate(self.transformer.layers):
+        copy_w(self.norm, "encoder.layer_norm")
+        for i, layer in enumerate(self.layers):
             prefix = f"encoder.layers.{i}"
-            copy_w(block.sa.q_proj, f"{prefix}.attention.q_proj")
-            copy_w(block.sa.k_proj, f"{prefix}.attention.k_proj")
-            copy_w(block.sa.v_proj, f"{prefix}.attention.v_proj")
-            copy_w(block.sa.out_proj, f"{prefix}.attention.out_proj")
-            copy_w(block.sa_norm, f"{prefix}.layer_norm")
+            copy_w(layer.sa.q_proj, f"{prefix}.attention.q_proj")
+            copy_w(layer.sa.k_proj, f"{prefix}.attention.k_proj")
+            copy_w(layer.sa.v_proj, f"{prefix}.attention.v_proj")
+            copy_w(layer.sa.out_proj, f"{prefix}.attention.out_proj")
+            copy_w(layer.sa_norm, f"{prefix}.layer_norm")
 
-            copy_w(block.mlp.linear1, f"{prefix}.feed_forward.intermediate_dense")
-            copy_w(block.mlp.linear2, f"{prefix}.feed_forward.output_dense")
-            copy_w(block.mlp_norm, f"{prefix}.final_layer_norm")
+            copy_w(layer.mlp.linear1, f"{prefix}.feed_forward.intermediate_dense")
+            copy_w(layer.mlp.linear2, f"{prefix}.feed_forward.output_dense")
+            copy_w(layer.mlp_norm, f"{prefix}.final_layer_norm")
 
         print(state_dict.keys())

@@ -23,12 +23,14 @@ class WhisperEncoder(nn.Module):
         # initialize pe to zeros and load it from OpenAI weights later.
         self.register_buffer("pos_embs", torch.zeros(self.max_seq_len // 2, d_model))
         self.pos_embs: Tensor
-        self.encoder = Encoder(n_layers, d_model, dropout=dropout)
+        self.layers = Encoder(n_layers, d_model, dropout=dropout)
+        self.norm = nn.LayerNorm(d_model)
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.stem(x).transpose(1, 2)
         x = x + self.pos_embs[: x.shape[1]]
-        x = self.encoder(x)
+        x = self.layers(x)
+        x = self.norm(x)
         return x
 
 
@@ -39,12 +41,14 @@ class WhisperDecoder(nn.Module):
         super().__init__()
         self.token_embs = nn.Embedding(vocab_size, d_model)
         self.pos_embs = nn.Parameter(torch.zeros(self.max_seq_len, d_model))
-        self.decoder = Decoder(n_layers, d_model, cross_attn=True, dropout=dropout)
+        self.layers = Decoder(n_layers, d_model, cross_attn=True, dropout=dropout)
+        self.norm = nn.LayerNorm(d_model)
 
     def forward(self, x: Tensor, memory: Tensor) -> Tensor:
         x = self.token_embs(x)
         x = x + self.pos_embs[: x.shape[1]]
-        x = self.decoder(x, memory)
+        x = self.layers(x, memory)
+        x = self.norm(x)
         x = x @ self.token_embs.weight.T  # weight-tying
         return x
 
@@ -105,25 +109,25 @@ class Whisper(nn.Module):
         self.decoder.token_embs.weight.copy_(state_dict.pop("decoder.token_embedding.weight"))
         self.decoder.pos_embs.copy_(state_dict.pop("decoder.positional_embedding"))
 
-        for transformer, _prefix in [(self.encoder.encoder, "encoder"), (self.decoder.decoder, "decoder")]:
-            for i, block in enumerate(transformer.layers):
+        for transformer, _prefix in [(self.encoder, "encoder"), (self.decoder, "decoder")]:
+            for i, layer in enumerate(transformer.layers):
                 prefix = f"{_prefix}.blocks.{i}"
-                copy_w(block.sa.q_proj, f"{prefix}.attn.query")
-                copy_w(block.sa.k_proj, f"{prefix}.attn.key")
-                copy_w(block.sa.v_proj, f"{prefix}.attn.value")
-                copy_w(block.sa.out_proj, f"{prefix}.attn.out")
-                copy_w(block.sa_norm, f"{prefix}.attn_ln")
+                copy_w(layer.sa.q_proj, f"{prefix}.attn.query")
+                copy_w(layer.sa.k_proj, f"{prefix}.attn.key")
+                copy_w(layer.sa.v_proj, f"{prefix}.attn.value")
+                copy_w(layer.sa.out_proj, f"{prefix}.attn.out")
+                copy_w(layer.sa_norm, f"{prefix}.attn_ln")
 
-                if block.ca is not None:
-                    copy_w(block.ca.q_proj, f"{prefix}.cross_attn.query")
-                    copy_w(block.ca.k_proj, f"{prefix}.cross_attn.key")
-                    copy_w(block.ca.v_proj, f"{prefix}.cross_attn.value")
-                    copy_w(block.ca.out_proj, f"{prefix}.cross_attn.out")
-                    copy_w(block.ca_norm, f"{prefix}.cross_attn_ln")
+                if layer.ca is not None:
+                    copy_w(layer.ca.q_proj, f"{prefix}.cross_attn.query")
+                    copy_w(layer.ca.k_proj, f"{prefix}.cross_attn.key")
+                    copy_w(layer.ca.v_proj, f"{prefix}.cross_attn.value")
+                    copy_w(layer.ca.out_proj, f"{prefix}.cross_attn.out")
+                    copy_w(layer.ca_norm, f"{prefix}.cross_attn_ln")
 
-                copy_w(block.mlp.linear1, f"{prefix}.mlp.0")
-                copy_w(block.mlp.linear2, f"{prefix}.mlp.2")
-                copy_w(block.mlp_norm, f"{prefix}.mlp_ln")
+                copy_w(layer.mlp.linear1, f"{prefix}.mlp.0")
+                copy_w(layer.mlp.linear2, f"{prefix}.mlp.2")
+                copy_w(layer.mlp_norm, f"{prefix}.mlp_ln")
 
             copy_w(transformer.norm, "encoder.ln_post" if _prefix == "encoder" else "decoder.ln")
 
