@@ -28,6 +28,11 @@ class GPT(nn.Module):
         self.pos_embs = nn.Parameter(torch.zeros(max_seq_len, d_model))
         self.layers = Decoder(n_layers, d_model, dropout=dropout, pre_norm=False, act="approximate_gelu")
 
+        # due to weight-tying, we need to set padded embeddings to zeros
+        # otherwise, language modelling head will always predicts the padded tokens
+        with torch.no_grad():
+            self.token_embs.weight[40478:] = 0
+
     def forward(self, x: Tensor) -> Tensor:
         x = self.token_embs(x)
         x = x + self.pos_embs[: x.shape[-2]]
