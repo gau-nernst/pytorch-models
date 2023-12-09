@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING
 
-import numpy as np
 import torch
 from torch import nn
 
@@ -28,8 +27,8 @@ class DecoderGenerator:
                 token = logits.argmax(-1).item()
 
             else:  # top-k sampling
-                probs, indices = logits.softmax(-1).topk(topk)
-                token = np.random.choice(indices.numpy(), p=(probs / probs.sum()).numpy())
+                logits, indices = logits.topk(topk)
+                token = indices[torch.multinomial(logits.softmax(-1), 1).item()]
 
             tokens.append(token)
             if tokens[-1] == self.tokenizer.eos_token_id:
