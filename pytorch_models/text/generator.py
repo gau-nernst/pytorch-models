@@ -1,10 +1,16 @@
+from typing import TYPE_CHECKING
+
 import numpy as np
 import torch
 from torch import nn
 
 
+if TYPE_CHECKING:
+    from transformers.tokenization_utils import PreTrainedTokenizerBase
+
+
 class DecoderGenerator:
-    def __init__(self, model: nn.Module, tokenizer):
+    def __init__(self, model: nn.Module, tokenizer: "PreTrainedTokenizerBase") -> None:
         self.model = model
         self.tokenizer = tokenizer
 
