@@ -2,7 +2,6 @@
 # https://github.com/openai/finetune-transformer-lm
 
 import json
-import math
 
 import numpy as np
 import requests

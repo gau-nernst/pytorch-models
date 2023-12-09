@@ -1,8 +1,6 @@
 # https://cdn.openai.com/research-covers/language-unsupervised/language_understanding_paper.pdf
 # https://github.com/openai/finetune-transformer-lm
 
-import math
-
 import torch
 from torch import Tensor, nn
 
