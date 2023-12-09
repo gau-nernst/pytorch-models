@@ -36,15 +36,16 @@ def test_from_hf(x: Tensor):
 
 
 def test_generate():
+    model_tag = "gpt2"
     prompt = "Today is a good day"
 
-    m = GPT2.from_openai(pretrained=True).eval()
-    tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    m = GPT2.from_hf(model_tag, pretrained=True).eval()
+    tokenizer = AutoTokenizer.from_pretrained(model_tag)
 
     generator = DecoderGenerator(m, tokenizer)
     actual = generator.generate(prompt, max_tokens=10, topk=1)
 
-    m_hf = GPT2LMHeadModel.from_pretrained("gpt2").eval()
+    m_hf = GPT2LMHeadModel.from_pretrained(model_tag).eval()
     tokens = tokenizer.encode(prompt, return_tensors="pt")
     tokens = m_hf.generate(tokens, max_new_tokens=10).squeeze(0)
     expected = tokenizer.decode(tokens)
