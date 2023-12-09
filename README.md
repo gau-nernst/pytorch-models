@@ -32,7 +32,7 @@ Available models:
 
 TODO:
 
-- DETR?
+- DETR? (need ResNet)
 - SAM?
 
 ## Text
@@ -121,7 +121,7 @@ For `T5Model`
 import torch
 from pytorch_models.text import T5Model, T5Generator
 
-model = T5Model.from_t5x("flan_t5-small", pretrained=True)
+model = T5Model.from_t5x("flan_t5-small", pretrained=True).eval()
 tokenizer = T5Model.get_tokenizer("flan_t5-small")
 
 inputs = "Translate to German. What is your name?"
@@ -133,8 +133,8 @@ target_ids = [tokenizer.pad_id()] + tokenizer.Encode(targets, add_eos=True)
 target_ids = torch.tensor(target_ids)
 
 # the model supports inputs without batch dim
-encoded = model.encode(input_ids)  # call encoder
-decoded = model.decode(target_ids, encoded)  # call decoder
+encoded = model.encode(input_ids)  # call encoder, (n_tokens, d_model)
+decoded = model.decode(target_ids, encoded)  # call decoder, (n_tokens, vocab_size)
 
 decoded = model(input_ids, target_ids)  # same as above
 
@@ -144,6 +144,28 @@ generator = T5Generator("flan_t5-small")
 prompt = "Translate to German. What is your name?"
 answer = generator.generate(prompt)
 assert answer == "Welches ist Ihres Namen?"
+```
+
+For `GPT` and `GPT2`
+
+```python
+import torch
+from pytorch_models.text import GPT, GPT2, DecoderGenerator
+from transformers import AutoTokenizer
+
+# model = GPT.from_openai(pretrained=True).eval()
+# tokenizer = AutoTokenizer.from_pretrained("openai-gpt")
+
+model = GPT2.from_hf("gpt2", pretrained=True).eval()
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
+
+token_ids = torch.tensor(tokenizer.encode("Today is a good day"))  # (n_tokens,)
+logits = model(token_ids)  # (n_tokens, vocab_size)
+
+# simple text generator with HF's tokenizer
+# set topk=1 for greedy decoding
+generator = DecoderGenerator(model, tokenizer)
+text = generator.generate("Today is a good day", max_tokens=100, topk=10)
 ```
 
 ### Audio
