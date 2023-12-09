@@ -13,12 +13,12 @@ def x():
 
 @torch.no_grad()
 def test_forward(x: Tensor):
-    m = GPT(2000, 2, 128)
+    m = GPT(2, 128)
     m(x)
 
 
 def test_compile(x: Tensor):
-    m = GPT(2000, 2, 128)
+    m = GPT(2, 128)
     m_compiled = torch.compile(m, fullgraph=True)
     m_compiled(x).sum().backward()
 
