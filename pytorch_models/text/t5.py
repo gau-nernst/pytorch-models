@@ -136,16 +136,16 @@ class T5Model(nn.Module):
         self, vocab_size: int, dim: int, n_heads: int, n_layers: int, mlp_dim: int, dropout: float = 0.0
     ) -> None:
         super().__init__()
-        self.embed = nn.Embedding(vocab_size, dim)
+        self.token_embs = nn.Embedding(vocab_size, dim)
         self.encoder = T5Encoder(dim, n_heads, n_layers, mlp_dim, dropout)
         self.decoder = T5Decoder(dim, n_heads, n_layers, mlp_dim, dropout)
         self.classifier = nn.Linear(dim, vocab_size, False)
 
     def encode(self, x: Tensor) -> Tensor:
-        return self.encoder(self.embed(x))
+        return self.encoder(self.token_embs(x))
 
     def decode(self, x: Tensor, memory: Tensor) -> Tensor:
-        return self.classifier(self.decoder(self.embed(x), memory))
+        return self.classifier(self.decoder(self.token_embs(x), memory))
 
     def forward(self, x: Tensor, targets: Tensor) -> Tensor:
         return self.decode(targets, self.encode(x))
@@ -229,7 +229,7 @@ class T5Generator(nn.Module):
 
 def _rename_key(key: str) -> str:
     return (
-        key.replace("token_embedder.embedding", "embed.weight")
+        key.replace("token_embedder.embedding", "token_embs.weight")
         .replace("decoder.logits_dense.kernel", "classifier.weight")
         .replace(".encoder_norm.scale", ".norm.weight")
         .replace(".decoder_norm.scale", ".norm.weight")

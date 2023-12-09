@@ -2,7 +2,6 @@
 # https://github.com/openai/finetune-transformer-lm
 
 import json
-import math
 
 import numpy as np
 import requests
@@ -14,18 +13,13 @@ from ..utils import torch_hub_download
 
 
 class GPT(nn.Module):
-    def __init__(
-        self,
-        vocab_size: int = 40478,
-        n_layers: int = 12,
-        d_model: int = 768,
-        max_seq_len: int = 512,
-        dropout: float = 0.0,
-    ):
+    vocab_size = 40478
+    max_seq_len: int = 512
+
+    def __init__(self, n_layers: int = 12, d_model: int = 768, dropout: float = 0.0) -> None:
         super().__init__()
-        vocab_size = math.ceil(vocab_size / 64) * 64  # pad to multiple of 64
-        self.token_embs = nn.Embedding(vocab_size, d_model)
-        self.pos_embs = nn.Parameter(torch.zeros(max_seq_len, d_model))
+        self.token_embs = nn.Embedding(self.vocab_size, d_model)
+        self.pos_embs = nn.Parameter(torch.zeros(self.max_seq_len, d_model))
         self.layers = Decoder(n_layers, d_model, dropout=dropout, pre_norm=False, act="approximate_gelu")
 
     def forward(self, x: Tensor) -> Tensor:
