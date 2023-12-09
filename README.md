@@ -165,7 +165,9 @@ logits = model(token_ids)  # (n_tokens, vocab_size)
 # simple text generator with HF's tokenizer
 # set topk=1 for greedy decoding
 generator = DecoderGenerator(model, tokenizer)
-text = generator.generate("Today is a good day", max_tokens=100, topk=10)
+text = generator.generate("Today is a good day", max_tokens=20, topk=10)
+# Sample output: Today is a good day to celebrate the accomplishments of your community.
+# We are going to have some really good games coming out next
 ```
 
 ### Audio
