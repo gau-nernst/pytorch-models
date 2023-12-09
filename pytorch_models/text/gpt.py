@@ -19,15 +19,9 @@ class GPT(nn.Module):
 
     def __init__(self, n_layers: int = 12, d_model: int = 768, dropout: float = 0.0) -> None:
         super().__init__()
-        n_embeds = math.ceil(self.vocab_size / 64) * 64  # pad to multiple of 64
-        self.token_embs = nn.Embedding(n_embeds, d_model)
+        self.token_embs = nn.Embedding(self.vocab_size, d_model)
         self.pos_embs = nn.Parameter(torch.zeros(self.max_seq_len, d_model))
         self.layers = Decoder(n_layers, d_model, dropout=dropout, pre_norm=False, act="approximate_gelu")
-
-        # due to weight-tying, we need to set padded embeddings to zeros
-        # otherwise, language modelling head will always predicts the padded tokens
-        with torch.no_grad():
-            self.token_embs.weight[self.vocab_size :] = 0
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.token_embs(x)
