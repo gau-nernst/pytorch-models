@@ -59,7 +59,7 @@ class MLP(nn.Sequential):
         self.dropout = nn.Dropout(dropout)
 
 
-class DecoderBlock(nn.Module):
+class DecoderLayer(nn.Module):
     def __init__(
         self,
         d_model: int,
@@ -97,7 +97,7 @@ class DecoderBlock(nn.Module):
         return x
 
 
-class EncoderBlock(DecoderBlock):
+class EncoderLayer(DecoderLayer):
     def __init__(
         self,
         d_model: int,
@@ -138,7 +138,7 @@ class Encoder(nn.Sequential):
     ) -> None:
         super().__init__()
         for _ in range(n_layers):
-            self.append(EncoderBlock(d_model, n_heads, head_dim, bias, mlp_ratio, dropout, act, pre_norm, norm_eps))
+            self.append(EncoderLayer(d_model, n_heads, head_dim, bias, mlp_ratio, dropout, act, pre_norm, norm_eps))
 
 
 class Decoder(nn.ModuleList):
@@ -159,7 +159,7 @@ class Decoder(nn.ModuleList):
         super().__init__()
         for _ in range(n_layers):
             self.append(
-                DecoderBlock(d_model, n_heads, head_dim, cross_attn, bias, mlp_ratio, dropout, act, pre_norm, norm_eps)
+                DecoderLayer(d_model, n_heads, head_dim, cross_attn, bias, mlp_ratio, dropout, act, pre_norm, norm_eps)
             )
 
     def forward(self, x: Tensor, memory: Tensor | None = None) -> Tensor:
