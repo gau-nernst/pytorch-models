@@ -2,6 +2,7 @@
 # AugReg: https://arxiv.org/abs/2106.10270
 # DeiT-3: https://arxiv.org/abs/2204.07118
 # SigLIP: https://arxiv.org/abs/2303.15343
+# DINO: https://arxiv.org/abs/2104.14294
 # DINOv2: https://arxiv.org/abs/2304.07193
 # https://github.com/google-research/vision_transformer/blob/main/vit_jax/models_vit.py
 
@@ -213,6 +214,12 @@ class ViT(nn.Module):
             _size = dict(S="small", M="medium", B="base", L="large", H="huge")[size]
             url = f"https://dl.fbaipublicfiles.com/deit/deit_3_{_size}_{kwargs['img_size']}_21k.pth"
 
+        elif weights == "dino":
+            kwargs["img_size"] = kwargs.get("img_size", 224)
+            _size = dict(S="small", B="base")[size]
+            _tag = f"dino_deit{_size}{patch_size}_pretrain"
+            url = f"https://dl.fbaipublicfiles.com/dino/{_tag}/{_tag}.pth"
+
         elif weights == "dinov2":
             kwargs["img_size"] = kwargs.get("img_size", 518)
             _tag = f"dinov2_vit{size.lower()}{patch_size}"
@@ -235,6 +242,8 @@ class ViT(nn.Module):
         if pretrained:
             if weights == "deit3":
                 assert patch_size == 16
+            elif weights == "dino":
+                assert patch_size in (16, 8)
             elif weights == "dinov2":
                 assert patch_size == 14
 

@@ -50,6 +50,7 @@ def test_from_google(model_tag, timm_tag):
     "model_tag,timm_tag,img_size",
     [
         ("S/16_deit3", "deit3_small_patch16_224.fb_in22k_ft_in1k", 224),
+        ("S/16_dino", "vit_small_patch16_224.dino", 224),
         ("S/14_dinov2", "vit_small_patch14_dinov2.lvd142m", 518),
     ],
 )
