@@ -1,6 +1,8 @@
 # ViT: https://arxiv.org/abs/2010.11929
 # AugReg: https://arxiv.org/abs/2106.10270
 # DeiT-3: https://arxiv.org/abs/2204.07118
+# SigLIP: https://arxiv.org/abs/2303.15343
+# DINOv2: https://arxiv.org/abs/2304.07193
 # https://github.com/google-research/vision_transformer/blob/main/vit_jax/models_vit.py
 
 from functools import partial
@@ -63,7 +65,7 @@ class ViT(nn.Module):
         self.pe = nn.Parameter(torch.zeros(1, (img_size // patch_size) ** 2, d_model))
 
         self.layers = Encoder(n_layers, d_model, n_heads=n_heads, dropout=dropout, norm_eps=self.norm_eps)
-        self.norm = nn.LayerNorm(d_model)
+        self.norm = nn.LayerNorm(d_model, self.norm_eps)
 
         self.pooler = dict(
             cls_token=ClassTokenPooling,
@@ -72,10 +74,10 @@ class ViT(nn.Module):
         )[pool_type]()
 
     def forward(self, imgs: Tensor) -> Tensor:
-        out = self.patch_embed(imgs).flatten(2).transpose(1, 2)  # (N, C, H, W) -> (N, H*W, C)
+        out = self.patch_embed(imgs).flatten(-2).transpose(-1, -2)  # (N, C, H, W) -> (N, H*W, C)
         out = out + self.pe
         if self.cls_token is not None:
-            out = torch.cat([self.cls_token, out], 1)
+            out = torch.cat([self.cls_token, out], dim=-2)
         out = self.layers(out)
         out = self.norm(out)
         out = self.pooler(out)
@@ -197,9 +199,27 @@ class ViT(nn.Module):
             print(jax_weights.keys())
 
     @staticmethod
-    def from_deit3(model_tag: str, *, pretrained: bool = False, **kwargs) -> "ViT":
+    def from_facebook(model_tag: str, *, pretrained: bool = False, **kwargs) -> "ViT":
+        if "_" in model_tag:
+            model_tag, weights = model_tag.split("_")
+        else:
+            weights = "deit3"
+
         size, patch_size = model_tag.split("/")
         patch_size = int(patch_size)
+
+        if weights == "deit3":
+            kwargs["img_size"] = kwargs.get("img_size", 224)
+            _size = dict(S="small", M="medium", B="base", L="large", H="huge")[size]
+            url = f"https://dl.fbaipublicfiles.com/deit/deit_3_{_size}_{kwargs['img_size']}_21k.pth"
+
+        elif weights == "dinov2":
+            kwargs["img_size"] = kwargs.get("img_size", 518)
+            _tag = f"dinov2_vit{size.lower()}{patch_size}"
+            url = f"https://dl.fbaipublicfiles.com/dinov2/{_tag}/{_tag}_pretrain.pth"
+
+        else:
+            raise ValueError(f"Unsupported {weights}")
 
         n_layers, d_model, n_heads = dict(
             Ti=(12, 192, 3),
@@ -213,21 +233,23 @@ class ViT(nn.Module):
 
         # TODO: support patch_size resizing
         if pretrained:
-            assert patch_size == 16
-            img_size = kwargs.get("img_size", 224)
-            _size = dict(S="small", M="medium", B="base", L="large", H="huge")[size]
+            if weights == "deit3":
+                assert patch_size == 16
+            elif weights == "dinov2":
+                assert patch_size == 14
 
-            url = f"https://dl.fbaipublicfiles.com/deit/deit_3_{_size}_{img_size}_21k.pth"
-            state_dict = torch.hub.load_state_dict_from_url(url)["model"]
-            m.load_deit3_state_dict(state_dict)
+            state_dict = torch.hub.load_state_dict_from_url(url)
+            if "model" in state_dict:
+                state_dict = state_dict["model"]
+            m.load_facebook_state_dict(state_dict)
 
         return m
 
     @torch.no_grad()
-    def load_deit3_state_dict(self, state_dict: dict[str, Tensor]) -> None:
+    def load_facebook_state_dict(self, state_dict: dict[str, Tensor]) -> None:
         state_dict = state_dict.copy()  # shallow clone
 
-        def copy_(m: nn.Linear | nn.LayerNorm, prefix: str):
+        def copy_(m: nn.Linear | nn.Conv2d | nn.LayerNorm, prefix: str):
             m.weight.copy_(state_dict.pop(prefix + ".weight").view(m.weight.shape))
             m.bias.copy_(state_dict.pop(prefix + ".bias"))
 
@@ -256,15 +278,21 @@ class ViT(nn.Module):
             layer.sa.v_proj.bias.copy_(v_b)
 
             copy_(layer.sa.out_proj, f"{prefix}.attn.proj")
-            scale = state_dict.pop(f"{prefix}.gamma_1")
-            layer.sa.out_proj.weight.mul_(scale.view(-1, 1))
-            layer.sa.out_proj.bias.mul_(scale)
+            scale = state_dict.pop(f"{prefix}.gamma_1", None)  # deit3
+            if scale is None:
+                scale = state_dict.pop(f"{prefix}.ls1.gamma", None)  # dinov2
+            if scale is not None:
+                layer.sa.out_proj.weight.mul_(scale.view(-1, 1))
+                layer.sa.out_proj.bias.mul_(scale)
 
             copy_(layer.mlp.linear1, f"{prefix}.mlp.fc1")
             copy_(layer.mlp.linear2, f"{prefix}.mlp.fc2")
-            scale = state_dict.pop(f"{prefix}.gamma_2")
-            layer.mlp.linear2.weight.mul_(scale.view(-1, 1))
-            layer.mlp.linear2.bias.mul_(scale)
+            scale = state_dict.pop(f"{prefix}.gamma_2", None)
+            if scale is None:
+                scale = state_dict.pop(f"{prefix}.ls2.gamma", None)
+            if scale is not None:
+                layer.mlp.linear2.weight.mul_(scale.view(-1, 1))
+                layer.mlp.linear2.bias.mul_(scale)
 
         print(state_dict.keys())
 
