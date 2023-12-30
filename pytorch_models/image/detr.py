@@ -32,13 +32,6 @@ class Bottleneck(nn.Module):
         return self.act(self.shortcut(x) + self.residual(x))
 
 
-class ResNetStage(nn.Sequential):
-    def __init__(self, in_dim: int, out_dim: int, n_layers: int, stride: int) -> None:
-        super().__init__(
-            Bottleneck(in_dim, out_dim, stride=stride), *[Bottleneck(out_dim, out_dim) for _ in range(n_layers - 1)]
-        )
-
-
 class ResNet(nn.Module):
     def __init__(self, n_layers: list[int]) -> None:
         super().__init__()
@@ -52,8 +45,13 @@ class ResNet(nn.Module):
 
         self.stages = nn.Sequential()
         for i, n_layer in enumerate(n_layers):
-            self.stages.append(ResNetStage(in_dim, 256 * 2**i, n_layer, 1 if i == 0 else 2))
-            in_dim = 256 * 2**i
+            out_dim = 256 * 2**i
+            stage = nn.Sequential(
+                Bottleneck(in_dim, out_dim, stride=1 if i == 0 else 2),
+                *[Bottleneck(out_dim, out_dim) for _ in range(n_layer - 1)],
+            )
+            self.stages.append(stage)
+            in_dim = out_dim
         self.out_dim = in_dim
 
     def forward(self, x: Tensor) -> Tensor:
