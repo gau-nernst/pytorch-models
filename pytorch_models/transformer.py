@@ -34,13 +34,19 @@ class MHA(nn.Module):
         self.dropout = dropout
 
     def forward(
-        self, x: Tensor, memory: Tensor | None = None, attn_bias: Tensor | None = None, causal: bool = False
+        self,
+        q: Tensor,
+        k: Tensor | None = None,
+        v: Tensor | None = None,
+        attn_bias: Tensor | None = None,
+        causal: bool = False,
     ) -> Tensor:
-        memory = x if memory is None else memory
+        k = k if k is not None else q
+        v = v if v is not None else k
 
-        q = self.q_proj(x).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)  # (*, n_heads, L, head_dim)
-        k = self.k_proj(memory).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)
-        v = self.v_proj(memory).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)
+        q = self.q_proj(q).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)  # (*, n_heads, L, head_dim)
+        k = self.k_proj(k).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)
+        v = self.v_proj(v).unflatten(-1, (self.n_heads, self.head_dim)).transpose(-2, -3)
 
         dropout = self.dropout if self.training else 0.0
         out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_bias, dropout_p=dropout, is_causal=causal)
@@ -54,6 +60,7 @@ class MLP(nn.Sequential):
         self.act = dict(
             gelu=nn.GELU,
             approximate_gelu=partial(nn.GELU, approximate="tanh"),
+            relu=partial(nn.ReLU, inplace=True),
         )[act]()
         self.linear2 = nn.Linear(hidden_dim, in_dim)
         self.dropout = nn.Dropout(dropout)
