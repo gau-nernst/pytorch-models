@@ -64,7 +64,7 @@ class ResNet(nn.Module):
 
 class DETRDecoderLayer(DecoderLayer):
     def __init__(self, d_model: int) -> None:
-        super().__init__(d_model, cross_attn=True, act="relu", mlp_ratio=8, pre_norm=False)
+        super().__init__(d_model, n_heads=8, cross_attn=True, act="relu", mlp_ratio=8, pre_norm=False)
 
     def forward(self, x: Tensor, memory: Tensor, query_embed: Tensor, pos_embed: Tensor) -> Tensor:
         q = k = x + query_embed
@@ -76,7 +76,7 @@ class DETRDecoderLayer(DecoderLayer):
 
 class DETREncoderLayer(EncoderLayer):
     def __init__(self, d_model: int) -> None:
-        super().__init__(d_model, act="relu", mlp_ratio=8, pre_norm=False)
+        super().__init__(d_model, n_heads=8, act="relu", mlp_ratio=8, pre_norm=False)
 
     def forward(self, x: Tensor, pos_embed: Tensor) -> Tensor:
         q = k = x + pos_embed
@@ -89,15 +89,18 @@ class SinusoidalPositionEmbedding2d(nn.Module):
     def __init__(self, d_model: int) -> None:
         super().__init__()
         d_model //= 2  # need to divide by 2, since half is for x, half is for y
-        freqs = (10_000 ** (-2 * torch.arange(d_model // 2) / d_model)).view(1, -1)
-        ts = torch.arange(50).view(-1, 1)
-        emb = torch.cat([torch.sin(freqs * ts), torch.cos(freqs * ts)], dim=1)
-        self.register_buffer("emb", emb, persistent=False)
+        freqs = 10_000 ** (-2 * torch.arange(d_model // 2) / d_model)
+        self.register_buffer("freqs", freqs, persistent=False)
+
+    def _make_embed(self, x: int) -> Tensor:
+        ts = torch.arange(1, x + 1, device=self.freqs.device, dtype=self.freqs.dtype) / (x + 1e-6) * 2 * torch.pi
+        out = ts.view(-1, 1) * self.freqs
+        return torch.stack([out.sin(), out.cos()], dim=2).flatten(1)  # interleave pattern
 
     def forward(self, h: int, w: int) -> Tensor:
-        x_emb = self.emb[:w].view(1, w, -1).expand(h, w, -1)
-        y_emb = self.emb[:h].view(h, 1, -1).expand(h, w, -1)
-        return torch.cat([x_emb, y_emb], dim=2)  # (H, W, C)
+        y_emb = self._make_embed(h).view(h, 1, -1).expand(h, w, -1)
+        x_emb = self._make_embed(w).view(1, w, -1).expand(h, w, -1)
+        return torch.cat([y_emb, x_emb], dim=2)
 
 
 class DETR(nn.Module):
