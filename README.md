@@ -31,7 +31,7 @@ Available models:
   - [`gsam`](https://arxiv.org/abs/2203.08065) weights: S/32, S/16, S/8, B/32, B/16
 - [DETR](https://arxiv.org/abs/2005.12872)
   - ResNet + Transformer Encoder-Decoder (no causal attention in Decoder)
-  - Weights: R50, R101
+  - Weights: R50, R101 (don't support DC5 checkpoints)
 
 TODO:
 

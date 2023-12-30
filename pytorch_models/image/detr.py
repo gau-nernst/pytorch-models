@@ -148,12 +148,10 @@ class DETR(nn.Module):
 
     @staticmethod
     def from_facebook(model_tag: str, *, pretrained: bool = False) -> "DETR":
-        backbone_layers, ckpt = {
-            "resnet50": ([3, 4, 6, 3], "detr-r50-e632da11.pth"),
-            "resnet50-dc5": ([3, 4, 6, 3], "detr-r50-dc5-f0fb7ef5.pth"),
-            "resnet101": ([3, 4, 23, 3], "detr-r101-2c7b67e5.pth"),
-            "resnet101-dc5": ([3, 4, 23, 3], "detr-r101-dc5-a2e86def.pth"),
-        }[model_tag]
+        backbone_layers, ckpt = dict(
+            resnet50=([3, 4, 6, 3], "detr-r50-e632da11.pth"),
+            resnet101=([3, 4, 23, 3], "detr-r101-2c7b67e5.pth"),
+        )[model_tag]
 
         m = DETR(backbone_layers)
 
