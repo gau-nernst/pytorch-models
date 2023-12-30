@@ -30,6 +30,8 @@ Available models:
   - `imagenet21k`, `imagenet1k`, or [`sam`](https://arxiv.org/abs/2010.01412) weights: B/16, L/16
   - [`gsam`](https://arxiv.org/abs/2203.08065) weights: S/32, S/16, S/8, B/32, B/16
 - [DETR](https://arxiv.org/abs/2005.12872)
+  - ResNet + Transformer Encoder-Decoder (no causal attention in Decoder)
+  - Weights: R50, R101
 
 TODO:
 

@@ -118,7 +118,7 @@ class DETR(nn.Module):
 
         self.norm = nn.LayerNorm(d_model)
         self.classifier = nn.Linear(d_model, n_classes + 1)
-        self.bbox_head = nn.Sequential(
+        self.box_head = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.ReLU(inplace=True),
             nn.Linear(d_model, d_model),
@@ -142,16 +142,18 @@ class DETR(nn.Module):
 
         query = self.norm(query)
         logits = self.classifier(query)
-        bboxes = self.bbox_head(query)
+        boxes = self.box_head(query)
 
-        return logits, bboxes
+        return logits, boxes
 
     @staticmethod
     def from_facebook(model_tag: str, *, pretrained: bool = False) -> "DETR":
-        backbone_layers, ckpt = dict(
-            resnet50=([3, 4, 6, 3], "detr-r50-e632da11.pth"),
-            resnet101=([3, 4, 23, 3], "detr-r101-2c7b67e5.pth"),
-        )[model_tag]
+        backbone_layers, ckpt = {
+            "resnet50": ([3, 4, 6, 3], "detr-r50-e632da11.pth"),
+            "resnet50-dc5": ([3, 4, 6, 3], "detr-r50-dc5-f0fb7ef5.pth"),
+            "resnet101": ([3, 4, 23, 3], "detr-r101-2c7b67e5.pth"),
+            "resnet101-dc5": ([3, 4, 23, 3], "detr-r101-dc5-a2e86def.pth"),
+        }[model_tag]
 
         m = DETR(backbone_layers)
 
@@ -225,6 +227,6 @@ class DETR(nn.Module):
 
         copy_(self.norm, "transformer.decoder.norm")
         copy_(self.classifier, "class_embed")
-        copy_(self.bbox_head[0], "bbox_embed.layers.0")
-        copy_(self.bbox_head[2], "bbox_embed.layers.1")
-        copy_(self.bbox_head[4], "bbox_embed.layers.2")
+        copy_(self.box_head[0], "bbox_embed.layers.0")
+        copy_(self.box_head[2], "bbox_embed.layers.1")
+        copy_(self.box_head[4], "bbox_embed.layers.2")
