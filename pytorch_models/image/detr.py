@@ -2,6 +2,7 @@
 # https://github.com/facebookresearch/detr
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor, nn
 
 from ..transformer import MHA, DecoderLayer, EncoderLayer
@@ -124,7 +125,7 @@ class DETR(nn.Module):
             nn.Linear(d_model, 4),
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         x = self.backbone(x)
         x = self.input_proj(x)
         pos_embed = self.pos_embed(x.shape[-2], x.shape[-1])
@@ -140,7 +141,7 @@ class DETR(nn.Module):
 
         query = self.norm(query)
         logits = self.classifier(query)
-        boxes = self.box_head(query)
+        boxes = self.box_head(query).sigmoid()
 
         return logits, boxes
 
@@ -226,3 +227,60 @@ class DETR(nn.Module):
         copy_(self.box_head[0], "bbox_embed.layers.0")
         copy_(self.box_head[2], "bbox_embed.layers.1")
         copy_(self.box_head[4], "bbox_embed.layers.2")
+
+
+class DETRPipeline(nn.Module):
+    # fmt: off
+    COCO_CLASSES = [
+        "N/A", "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
+        "fire hydrant", "N/A", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
+        "elephant", "bear", "zebra", "giraffe", "N/A", "backpack", "umbrella", "N/A", "N/A", "handbag", "tie",
+        "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite","baseball bat", "baseball glove",
+        "skateboard", "surfboard", "tennis racket", "bottle", "N/A", "wine glass", "cup", "fork", "knife", "spoon",
+        "bowl", "banana", "apple", "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake",
+        "chair", "couch", "potted plant", "bed", "N/A", "dining table", "N/A", "N/A", "toilet", "N/A", "tv", "laptop",
+        "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink", "refrigerator", "N/A",
+        "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush",
+    ]
+    # fmt: on
+
+    def __init__(self, model: DETR, threshold: float = 0.7) -> None:
+        super().__init__()
+        self.model = model.eval()
+        self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1))
+        self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1))
+        self.th = threshold
+
+    @staticmethod
+    def cxcywh_to_xyxy(boxes: Tensor) -> Tensor:
+        x1 = boxes[..., 0] - boxes[..., 2] * 0.5
+        y1 = boxes[..., 1] - boxes[..., 3] * 0.5
+        x2 = boxes[..., 0] + boxes[..., 2] * 0.5
+        y2 = boxes[..., 1] + boxes[..., 3] * 0.5
+        return torch.stack([x1, y1, x2, y2], dim=-1)
+
+    @torch.no_grad()
+    def forward(self, images: list[Tensor], th: float | None = None):
+        height = max(img.shape[-2] for img in images)
+        width = max(img.shape[-1] for img in images)
+
+        images = [F.pad(img, (0, width - img.shape[-1], 0, height - img.shape[-2])) for img in images]
+        images = torch.stack(images, dim=0)
+        images = (images - self.mean) / self.std
+
+        logits, boxes = self.model(images)
+
+        probs = logits.softmax(-1)[..., :-1]  # exclude last class i.e. no object
+        keep = probs.amax(-1) >= (th or self.th)  # (N, n_queries)
+
+        boxes = boxes * boxes.new_tensor([width, height, width, height])
+        boxes = self.cxcywh_to_xyxy(boxes)  # (N, n_queries, 4)
+
+        outputs = []
+        for i in range(images.shape[0]):
+            img_probs, img_classes = probs[i, keep[i]].max(-1)
+            img_classes = [self.COCO_CLASSES[class_id] for class_id in img_classes.cpu()]
+            img_boxes = boxes[i, keep[i]]
+            outputs.append([img_classes, img_boxes, img_probs])
+
+        return outputs

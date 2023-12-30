@@ -30,8 +30,9 @@ Available models:
   - `imagenet21k`, `imagenet1k`, or [`sam`](https://arxiv.org/abs/2010.01412) weights: B/16, L/16
   - [`gsam`](https://arxiv.org/abs/2203.08065) weights: S/32, S/16, S/8, B/32, B/16
 - [DETR](https://arxiv.org/abs/2005.12872)
-  - ResNet + Transformer Encoder-Decoder (no causal attention in Decoder)
+  - Architecture: ResNet + Transformer Encoder-Decoder (no causal attention in Decoder)
   - Weights: R50, R101 (don't support DC5 checkpoints)
+  - Don't support image masking (for accurate batch inference of different image sizes)
 
 TODO:
 
@@ -103,6 +104,54 @@ outputs = model(torch.randn(1, 3, 224, 224))  # (1, 768)
 
 model.resize_pe(256)  # resize positional embeddings to accept different input size
 outputs = model(torch.randn(1, 3, 256, 256))  # (1, 768)
+```
+
+For `DETR`
+
+```python
+import torch
+from pytorch_models.image import DETR, DETRPipeline
+
+m = DETR.from_facebook("resnet50", pretrained=True)  # also available: "resnet101"
+
+img = torch.randn(1, 3, 256, 256)
+img = (img - torch.tensor([0.485, 0.456, 0.406]).view(-1, 1, 1)) / torch.tensor([0.229, 0.224, 0.225]).view(-1, 1, 1)
+
+logits, boxes = m(img)
+logits  # (1, 100, 92) where 100 is n_queries, 92 is n_classes + 1
+boxes  # (1, 100, 4) where 4 is relative box coordinates in cxcywh format (from 0-1)
+
+# to decode outputs
+th = 0.7
+probs = logits.softmax(-1)[..., :-1]  # skip last class e.g. no-object
+keep = probs.amax(-1) >= th  # (n_queries,)
+
+probs = probs[0, keep[0]]  # (n_detections, 92)
+boxes = boxes[0, keep[0]]  # (n_detections, 4)
+
+# scale to absolute image pixel coordinates
+boxes = boxes * boxes.new_tensor([img.shape[-1], img.shape[-2], img.shape[-1], img.shape[-2]])
+
+# convert to xyxy format
+x1 = boxes[..., 0] - boxes[..., 2] * 0.5
+y1 = boxes[..., 1] - boxes[..., 3] * 0.5
+x2 = boxes[..., 0] + boxes[..., 2] * 0.5
+y2 = boxes[..., 1] + boxes[..., 3] * 0.5
+boxes = torch.stack([x1, y1, x2, y2], dim=-1)
+
+# simple wrapper, with pre- and post-processing mentioned above
+pipeline = DETRPipeline(m, th)
+
+# pass in a list of CHW tensors. output is a list of results for each input image
+out = pipeline([torch.randn(3, 256, 256)])[0]
+out
+# ['remote', 'remote', 'couch', 'cat', 'cat'],
+# tensor([[ 3.9384e+01,  6.6804e+01,  1.7851e+02,  1.2038e+02],
+#         [ 3.3367e+02,  7.5397e+01,  3.6453e+02,  1.9142e+02],
+#         [-1.0672e-01,  1.2313e+00,  6.3982e+02,  4.7406e+02],
+#         [ 1.1512e+01,  5.1833e+01,  3.1479e+02,  4.6912e+02],
+#         [ 3.4363e+02,  2.4222e+01,  6.3989e+02,  3.6602e+02]]),
+# tensor([0.9987, 0.7237, 0.9943, 0.9988, 0.9987])]
 ```
 
 ### Text
