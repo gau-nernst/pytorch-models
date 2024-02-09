@@ -7,18 +7,22 @@ from torch import Tensor, nn
 from ..transformer import Encoder
 
 
+def conv_norm_act(in_dim: int, out_dim: int, kernel_size: int, stride: int = 1, groups: int = 1):
+    return nn.Sequential(
+        nn.Conv2d(in_dim, out_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=groups, bias=False),
+        nn.BatchNorm2d(out_dim),
+        nn.SiLU(),
+    )
+
+
 # from MobileNetv2
 class MBConv(nn.Sequential):
     def __init__(self, in_dim: int, expansion: int, out_dim: int, stride: int = 1) -> None:
         hidden_dim = in_dim * expansion
         self.residual = (in_dim == out_dim) and (stride == 1)
         super().__init__(
-            nn.Conv2d(in_dim, hidden_dim, 1, bias=False),
-            nn.BatchNorm2d(hidden_dim),
-            nn.SiLU(),
-            nn.Conv2d(hidden_dim, hidden_dim, 3, stride, 1, groups=hidden_dim, bias=False),
-            nn.BatchNorm2d(hidden_dim),
-            nn.SiLU(),
+            *conv_norm_act(in_dim, hidden_dim, 1),
+            *conv_norm_act(hidden_dim, hidden_dim, 3, stride, groups=hidden_dim),
             nn.Conv2d(hidden_dim, out_dim, 1),
             nn.BatchNorm2d(out_dim),
         )
@@ -54,19 +58,10 @@ class MobileViTBlock(nn.Module):
 
     def __init__(self, in_dim: int, d_model: int, n_layers: int) -> None:
         super().__init__()
-        self.in_conv = nn.Sequential(
-            nn.Conv2d(in_dim, in_dim, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(in_dim),
-            nn.SiLU(),
-            nn.Conv2d(in_dim, d_model, 1, bias=False),
-            nn.BatchNorm2d(d_model),
-            nn.SiLU(),
-        )
+        self.in_conv = nn.Sequential(conv_norm_act(in_dim, in_dim, 3), conv_norm_act(in_dim, d_model, 1))
         self.transformer = Encoder(n_layers, d_model, mlp_ratio=2.0)
-        self.out_proj = nn.Sequential(nn.Conv2d(d_model, in_dim, 1, bias=False), nn.BatchNorm2d(in_dim), nn.SiLU())
-        self.out_fusion = nn.Sequential(
-            nn.Conv2d(in_dim * 2, in_dim, 3, 1, 1, bias=False), nn.BatchNorm2d(in_dim), nn.SiLU()
-        )
+        self.out_proj = conv_norm_act(d_model, in_dim, 1)
+        self.out_fusion = conv_norm_act(in_dim * 2, in_dim, 3)
 
     def forward(self, x: Tensor) -> Tensor:
         out, n_patches = unfold(self.in_conv(x), self.patch_size)
@@ -78,7 +73,7 @@ class MobileViT(nn.Sequential):
     def __init__(self, channels: list[int], d_models: list[int], out_dim: int, expansion: int) -> None:
         super().__init__(
             nn.Sequential(
-                nn.Sequential(nn.Conv2d(3, 16, 3, 2, 1, bias=False), nn.BatchNorm2d(16), nn.SiLU()),
+                conv_norm_act(3, 16, 3, 2),
                 MBConv(16, expansion, channels[0]),
             ),
             nn.Sequential(
@@ -97,11 +92,7 @@ class MobileViT(nn.Sequential):
             nn.Sequential(
                 MBConv(channels[3], expansion, channels[4], 2),
                 MobileViTBlock(channels[4], d_models[2], 3),
-                nn.Sequential(
-                    nn.Conv2d(channels[4], out_dim, 1),
-                    nn.BatchNorm2d(out_dim),
-                    nn.SiLU(),
-                ),
+                conv_norm_act(channels[4], out_dim, 1),
             ),
             nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Flatten(1)),
         )
