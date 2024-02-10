@@ -31,6 +31,7 @@ Available models:
 - [MLP-Mixer](https://arxiv.org/abs/2105.01601)
   - `imagenet21k`, `imagenet1k`, or [`sam`](https://arxiv.org/abs/2010.01412) weights: B/16, L/16
   - [`gsam`](https://arxiv.org/abs/2203.08065) weights: S/32, S/16, S/8, B/32, B/16
+- [MobileViT](https://arxiv.org/abs/2110.02178)
 - [DETR](https://arxiv.org/abs/2005.12872)
   - Architecture: ResNet + Transformer Encoder-Decoder (no causal attention in Decoder, so more like Encoder with cross-attention)
   - Weights: R50, R101 (don't support DC5 checkpoints)
@@ -106,6 +107,16 @@ outputs = model(torch.randn(1, 3, 224, 224))  # (1, 768)
 
 model.resize_pe(256)  # resize positional embeddings to accept different input size
 outputs = model(torch.randn(1, 3, 256, 256))  # (1, 768)
+```
+
+For `MobileViT`
+
+```python
+import torch
+from pytorch_models.image import MobileViT
+
+model = MobileViT.from_apple("xxs", pretrained=True)
+outputs = model(torch.randn(1, 3, 256, 256))  # (1, 320)
 ```
 
 For `DETR`
