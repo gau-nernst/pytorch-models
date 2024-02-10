@@ -48,7 +48,7 @@ class Conv1d(nn.Sequential):
         self.norm = nn.GroupNorm(1, out_channels) if norm_type == "time_group_norm" else nn.Identity()
 
         if norm_type == "weight_norm":
-            nn.utils.weight_norm(self.conv)
+            nn.utils.parametrizations.weight_norm(self.conv)
 
 
 class ConvTranspose1d(nn.Sequential):
@@ -67,7 +67,7 @@ class ConvTranspose1d(nn.Sequential):
         self.unpad = Unpad1d(kernel_size, stride, causal)
 
         if norm_type == "weight_norm":
-            nn.utils.weight_norm(self.conv)
+            nn.utils.parametrizations.weight_norm(self.conv)
 
 
 class LSTM(nn.LSTM):

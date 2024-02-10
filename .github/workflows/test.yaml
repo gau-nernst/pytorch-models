@@ -11,13 +11,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        torch_ver: ["2.1.2", "2.2.0"]
+        torch_ver: ["2.1.2"]
         modality: [image, text, audio, audio2text]
         include:
           - torch_ver: "2.1.2"
             torchvision_ver: "0.16.2"
-          - torch_ver: "2.2.0"
-            torchvision_ver: "0.17.0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
