@@ -1,7 +1,5 @@
 # https://arxiv.org/abs/2201.03545
 # https://github.com/facebookresearch/ConvNeXt
-# https://arxiv.org/abs/2301.00808
-# https://github.com/facebookresearch/ConvNeXt-V2
 
 import torch
 from torch import Tensor, nn
@@ -9,6 +7,7 @@ from torch import Tensor, nn
 
 class Permute(nn.Module):
     def __init__(self, *dims):
+        super().__init__()
         self.dims = dims
 
     def forward(self, x: Tensor) -> Tensor:
@@ -41,7 +40,6 @@ class ConvNeXtBlock(nn.Sequential):
             nn.LayerNorm(d_model, norm_eps),
             nn.Linear(d_model, hidden_dim),
             nn.GELU(),
-            GlobalResponseNorm(hidden_dim) if v2 else nn.Identity(),
             nn.Linear(hidden_dim, d_model),
         )
 
@@ -81,7 +79,7 @@ class ConvNeXt(nn.Sequential):
         self.norm = nn.LayerNorm(d_model, norm_eps)
 
     @staticmethod
-    def from_facebook(variant: str, v2: bool = False, pretrained: bool = False) -> "ConvNeXt":
+    def from_facebook(variant: str, *, pretrained: bool = False) -> "ConvNeXt":
         d_model, depths = dict(
             atto=(40, (2, 2, 6, 2)),
             femto=(48, (2, 2, 6, 2)),
@@ -94,13 +92,10 @@ class ConvNeXt(nn.Sequential):
             xlarge=(256, (3, 3, 27, 3)),
             huge=(352, (3, 3, 27, 3)),
         )[variant]
-        m = ConvNeXt(d_model, depths, v2=v2)
+        m = ConvNeXt(d_model, depths)
 
         if pretrained:
-            if not v2:
-                url = f"https://dl.fbaipublicfiles.com/convnext/convnext_{variant}_22k_224.pth"
-            else:
-                url = f"https://dl.fbaipublicfiles.com/convnext/convnextv2/pt_only/convnextv2_{variant}_1k_224_fcmae.pt"
+            url = f"https://dl.fbaipublicfiles.com/convnext/convnext_{variant}_22k_224.pth"
             state_dict = torch.hub.load_state_dict_from_url(url)["model"]
             m.load_facebook_state_dict(state_dict)
 
@@ -138,9 +133,4 @@ class ConvNeXt(nn.Sequential):
                 if isinstance(block.layers[8], LayerScale):
                     block.layers[8].gamma.copy_(state_dict.pop(prefix + "gamma"))
 
-        # FCMAE checkpoints don't contain head norm
-        if "norm.weight" in state_dict:
-            copy_(self.norm, "norm")
-            assert len(state_dict) == 2
-        else:
-            assert len(state_dict) == 0
+        copy_(self.norm, "norm")
