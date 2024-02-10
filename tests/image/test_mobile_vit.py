@@ -19,7 +19,7 @@ def test_compile():
 
 
 @torch.no_grad()
-@pytest.mark.parametrize("variant", ["xxs"])
+@pytest.mark.parametrize("variant", ["xxs", "xs"])
 def test_from_apple(variant):
     m = MobileViT.from_apple(variant, pretrained=True).eval()
     m_timm = timm.create_model(f"mobilevit_{variant}.cvnets_in1k", pretrained=True, num_classes=0).eval()
