@@ -58,7 +58,7 @@ class MobileViTBlock(nn.Module):
         super().__init__()
         # NOTE: d_model might not be divisible by 32
         self.in_conv = nn.Sequential(conv_norm_act(in_dim, in_dim, 3), nn.Conv2d(in_dim, d_model, 1, bias=False))
-        self.transformer = Encoder(n_layers, d_model, n_heads=d_model // 32, mlp_ratio=2.0, act="silu")
+        self.transformer = Encoder(n_layers, d_model, n_heads=4, mlp_ratio=2.0, act="silu")
         self.norm = nn.LayerNorm(d_model)
         self.out_proj = conv_norm_act(d_model, in_dim, 1)
         self.out_fusion = conv_norm_act(in_dim * 2, in_dim, 3)
@@ -163,7 +163,9 @@ class MobileViT(nn.Sequential):
             load_conv_norm(layer.out_proj, f"{prefix}.conv_proj")
             load_conv_norm(layer.out_fusion, f"{prefix}.fusion")
 
+        # CVNets v0.1 uses OpenCV, thus we need to flip the 1st conv weights
         load_conv_norm(self[0][0], "conv_1")
+        self[0][0][0].weight.copy_(self[0][0][0].weight.flip(1))
         load_mbconv(self[0][1], "layer_1.0.block")
 
         load_mbconv(self[1][0], "layer_2.0.block")
