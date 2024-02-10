@@ -58,7 +58,7 @@ class MobileViTBlock(nn.Module):
         super().__init__()
         # NOTE: d_model might not be divisible by 32
         self.in_conv = nn.Sequential(conv_norm_act(in_dim, in_dim, 3), nn.Conv2d(in_dim, d_model, 1, bias=False))
-        self.transformer = Encoder(n_layers, d_model, n_heads=d_model // 32, mlp_ratio=2.0)
+        self.transformer = Encoder(n_layers, d_model, n_heads=d_model // 32, mlp_ratio=2.0, act="silu")
         self.norm = nn.LayerNorm(d_model)
         self.out_proj = conv_norm_act(d_model, in_dim, 1)
         self.out_fusion = conv_norm_act(in_dim * 2, in_dim, 3)
