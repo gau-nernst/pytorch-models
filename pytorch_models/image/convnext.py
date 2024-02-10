@@ -14,20 +14,6 @@ class Permute(nn.Module):
         return x.permute(self.dims)
 
 
-class GlobalResponseNorm(nn.Module):
-    def __init__(self, dim: int, eps: float = 1e-6) -> None:
-        super().__init__()
-        self.gamma = nn.Parameter(torch.zeros(dim))
-        self.beta = nn.Parameter(torch.zeros(dim))
-        self.eps = eps
-
-    def forward(self, x: Tensor) -> Tensor:
-        # x: shape (B, H, W, C)
-        gx = torch.linalg.vector_norm(x, dim=(1, 2), keepdim=True)  # (B, 1, 1, C)
-        nx = gx / gx.mean(-1, keepdim=True).add(self.eps)
-        return x + x * nx * self.gamma + self.beta
-
-
 class ConvNeXtBlock(nn.Sequential):
     expansion = 4
 
@@ -42,9 +28,10 @@ class ConvNeXtBlock(nn.Sequential):
             nn.GELU(),
             nn.Linear(hidden_dim, d_model),
         )
+        self.gamma = nn.Parameter(torch.full((d_model,), 1e-6))
 
     def forward(self, x: Tensor) -> Tensor:
-        return x + super().forward(x)
+        return x + super().forward(x) * self.gamma
 
 
 class ConvNeXt(nn.Sequential):
@@ -75,7 +62,7 @@ class ConvNeXt(nn.Sequential):
 
             self.stages.append(stage)
 
-        self.pool = nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Flatten(1))
+        self.pool = nn.Sequential(Permute(0, 3, 1, 2), nn.AdaptiveAvgPool2d(1), nn.Flatten(1))
         self.norm = nn.LayerNorm(d_model, norm_eps)
 
     @staticmethod
@@ -106,31 +93,25 @@ class ConvNeXt(nn.Sequential):
         state_dict = dict(state_dict)
 
         def copy_(m: nn.Conv2d | nn.Linear | nn.LayerNorm, prefix: str):
-            m.weight.copy_(state_dict.pop(prefix + ".weight"))
-            m.bias.copy_(state_dict.pop(prefix + ".bias"))
+            m.weight.copy_(state_dict.pop(f"{prefix}.weight"))
+            m.bias.copy_(state_dict.pop(f"{prefix}.bias"))
 
-        copy_(self.stem[0], "downsample_layers.0.0")  # Conv2d
-        copy_(self.stem[2], "downsample_layers.0.1")  # LayerNorm
+        copy_(self.stem[0], "downsample_layers.0.0")
+        copy_(self.stem[2], "downsample_layers.0.1")
 
         for stage_idx, stage in enumerate(self.stages):
             if stage_idx > 0:
-                copy_(stage[0][0], f"downsample_layers.{stage_idx}.0")  # LayerNorm
-                copy_(stage[0][2], f"downsample_layers.{stage_idx}.1")  # Conv2d
+                copy_(stage[0][0], f"downsample_layers.{stage_idx}.0")
+                copy_(stage[0][2], f"downsample_layers.{stage_idx}.1")
 
             for block_idx in range(1, len(stage)):
                 block: ConvNeXtBlock = stage[block_idx]
-                prefix = f"stages.{stage_idx}.{block_idx - 1}."
+                prefix = f"stages.{stage_idx}.{block_idx - 1}"
 
-                copy_(block.layers[1], prefix + "dwconv")
-                copy_(block.layers[3], prefix + "norm")
-                copy_(block.layers[4], prefix + "pwconv1")
-
-                if isinstance(block.layers[6], GlobalResponseNorm):  # v2
-                    block.layers[6].gamma.copy_(state_dict.pop(prefix + "grn.gamma").squeeze())
-                    block.layers[6].beta.copy_(state_dict.pop(prefix + "grn.beta").squeeze())
-
-                copy_(block.layers[7], prefix + "pwconv2")
-                if isinstance(block.layers[8], LayerScale):
-                    block.layers[8].gamma.copy_(state_dict.pop(prefix + "gamma"))
+                copy_(block[1], f"{prefix}.dwconv")
+                copy_(block[3], f"{prefix }.norm")
+                copy_(block[4], f"{prefix}.pwconv1")
+                copy_(block[6], f"{prefix}.pwconv2")
+                block.gamma.copy_(state_dict.pop(f"{prefix}.gamma"))
 
         copy_(self.norm, "norm")

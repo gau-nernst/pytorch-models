@@ -22,7 +22,7 @@ def test_compile():
 @pytest.mark.parametrize("variant", ["tiny", "base"])
 def test_from_facebook(variant):
     m = ConvNeXt.from_facebook(variant, pretrained=True).eval()
-    m_timm = timm.create_model(f"mobilevit_{variant}.fb_in22k", pretrained=True, num_classes=0).eval()
+    m_timm = timm.create_model(f"convnext_{variant}.fb_in22k", pretrained=True, num_classes=0).eval()
 
     x = torch.randn(1, 3, 224, 224)
     actual = m(x)
