@@ -61,6 +61,7 @@ class MLP(nn.Sequential):
             gelu=nn.GELU,
             approximate_gelu=partial(nn.GELU, approximate="tanh"),
             relu=partial(nn.ReLU, inplace=True),
+            silu=nn.SiLU,
         )[act]()
         self.linear2 = nn.Linear(hidden_dim, in_dim)
         self.dropout = nn.Dropout(dropout)
