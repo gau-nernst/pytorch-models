@@ -13,7 +13,17 @@ class conv_norm_act(in_dim: int, out_dim: int, kernel_size: int, stride: int = 1
 
 
 class SqueezeExcitation(nn.Sequential):
-    pass
+    def __init__(self, in_dim: int) -> None:
+        super().__init__(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(in_dim, in_dim // 4, 1),
+            nn.SiLU(),
+            nn.Conv2d(in_dim // 4, in_dim, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        return x * super().forward(x)
 
 
 # pre-norm MBConv
