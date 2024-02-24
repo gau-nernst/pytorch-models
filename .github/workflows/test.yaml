@@ -50,6 +50,7 @@ jobs:
         run: pytest -v tests/audio
 
   test_audio2text:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
