@@ -2,15 +2,29 @@
 # https://github.com/google-research/maxvit
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor, nn
 
 from ..transformer import MHA, MLP
 from ..utils import torch_hub_download
 
 
+class Conv2d(nn.Conv2d):
+    def __init__(
+        self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, groups: int = 1, bias: bool = True
+    ) -> None:
+        padding = (kernel_size - 1) // 2 if stride == 1 else 0
+        super().__init__(in_channels, out_channels, kernel_size, stride, padding, groups=groups, bias=bias)
+
+    def forward(self, x: Tensor) -> Tensor:
+        if self.stride == (2, 2):
+            x = F.pad(x, (0, 1, 0, 1))
+        return super().forward(x)
+
+
 def conv_norm_act(in_dim: int, out_dim: int, kernel_size: int, stride: int = 1, groups: int = 1) -> nn.Sequential:
     return nn.Sequential(
-        nn.Conv2d(in_dim, out_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=groups, bias=False),
+        Conv2d(in_dim, out_dim, kernel_size, stride, groups=groups, bias=False),
         nn.BatchNorm2d(out_dim, eps=1e-3, momentum=0.01),
         nn.GELU(approximate="tanh"),
     )
@@ -37,7 +51,7 @@ class MBConv(nn.Module):
         super().__init__()
         hidden_dim = out_dim * 4
         self.residual = nn.Sequential(
-            nn.BatchNorm2d(in_dim),
+            nn.BatchNorm2d(in_dim, eps=1e-3, momentum=0.01),
             conv_norm_act(in_dim, hidden_dim, 1),
             conv_norm_act(hidden_dim, hidden_dim, 3, stride, hidden_dim),
             SqueezeExcitation(hidden_dim),
@@ -123,7 +137,7 @@ class MaxViTBlock(nn.Module):
         self.window_size = window_size
 
     def forward(self, x: Tensor) -> Tensor:
-        x = self.mbconv(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+        x = self.mbconv(x).permute(0, 2, 3, 1)
 
         x, nH, nW = block(x, self.window_size)
         x = self.block_layer(x)
@@ -133,15 +147,17 @@ class MaxViTBlock(nn.Module):
         x = self.grid_layer(x)
         x = ungrid(x, nH, nW, self.window_size)
 
-        return x
+        return x.permute(0, 3, 1, 2)
 
 
 class MaxViT(nn.Module):
     def __init__(self, stem_dim: int, n_blocks: list[int], dims: list[int], dropout: float = 0.0):
         super().__init__()
         self.stem = nn.Sequential(
-            conv_norm_act(3, stem_dim, 3, 2),
-            nn.Conv2d(stem_dim, stem_dim, 3, 1, 1),
+            Conv2d(3, stem_dim, 3, 2),
+            nn.BatchNorm2d(stem_dim, eps=1e-3, momentum=0.01),
+            nn.GELU(approximate="tanh"),
+            Conv2d(stem_dim, stem_dim, 3),
         )
         in_dim = stem_dim
 
@@ -156,10 +172,10 @@ class MaxViT(nn.Module):
         self.norm = nn.LayerNorm(in_dim, 1e-5)
 
     def forward(self, x: Tensor) -> Tensor:
-        x = self.stem(x).permute(0, 2, 3, 1)
+        x = self.stem(x)
         for stage in self.stages:
             x = stage(x)
-        return self.norm(x.mean((1, 2)))
+        return self.norm(F.adaptive_avg_pool2d(x, 1).flatten(1))
 
     @staticmethod
     def from_google(variant: str, *, pretrained: bool = False, **kwargs) -> "MaxViT":
@@ -195,14 +211,10 @@ class MaxViT(nn.Module):
 
     @torch.no_grad()
     def load_google_state_dict(self, reader) -> None:
-        keys = set(
-            x
-            for x in reader.get_variable_to_shape_map().keys()
-            if not x.endswith(("ExponentialMovingAverage", "adam_m", "adam_v"))
-        )
+        keys = set(x for x in reader.get_variable_to_shape_map().keys() if x.endswith("ExponentialMovingAverage"))
 
         def get_param(name: str):
-            name = f"maxvit/{name}"
+            name = f"maxvit/{name}/ExponentialMovingAverage"
             keys.remove(name)
             return torch.from_numpy(reader.get_tensor(name))
 
@@ -229,9 +241,9 @@ class MaxViT(nn.Module):
                 module.running_mean.copy_(get_param(f"{prefix}/moving_mean"))
                 module.running_var.copy_(get_param(f"{prefix}/moving_variance"))
 
-        load_conv2d(self.stem[0][0], "stem/conv_0")
-        load_norm(self.stem[0][1], "stem/norm_0")
-        load_conv2d(self.stem[1], "stem/conv_1")
+        load_conv2d(self.stem[0], "stem/conv_0")
+        load_norm(self.stem[1], "stem/norm_0")
+        load_conv2d(self.stem[3], "stem/conv_1")
 
         for stage_idx, stage in enumerate(self.stages):
             for block_idx, block in enumerate(stage):
