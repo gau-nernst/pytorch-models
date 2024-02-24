@@ -1,6 +1,7 @@
 import pytest
 import timm
 import torch
+from torch import nn
 
 from pytorch_models.image import MaxViT
 
@@ -26,6 +27,7 @@ def test_compile():
 def test_from_google(variant, timm_tag):
     m = MaxViT.from_google(variant, pretrained=True).eval()
     m_timm = timm.create_model(timm_tag, pretrained=True, num_classes=0).eval()
+    m_timm.head.pre_logits = nn.Identity()
 
     x = torch.randn(1, 3, 224, 224)
     actual = m(x)

@@ -101,16 +101,15 @@ class RelativeMHA(MHA):
         relative_size = 2 * input_size - 1  # [-(input_size - 1), input_size - 1]
         self.attn_bias = nn.Parameter(torch.zeros(self.n_heads, relative_size, relative_size))
 
-        index = torch.empty(input_size, input_size, dtype=torch.long)
-        for i in range(input_size):
-            for j in range(input_size):
-                index[i][j] = j - i + input_size - 1
-        self.register_buffer("bias_index", index.view(-1), persistent=False)
+        index = torch.arange(input_size).view(1, -1) - torch.arange(input_size).view(-1, 1) + input_size - 1
+        self.register_buffer("bias_index", index, persistent=False)
         self.bias_index: Tensor
 
+    # attn bias still doesn't look very nice...
     def forward(self, x: Tensor) -> Tensor:
         bias = self.attn_bias[:, self.bias_index]
-        bias = bias[:, :, self.bias_index]
+        bias = bias[..., self.bias_index]
+        bias = bias.permute(0, 1, 3, 2, 4).flatten(1, 2).flatten(2, 3)
         return super().forward(x, attn_bias=bias)
 
 
