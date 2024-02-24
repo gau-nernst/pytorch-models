@@ -122,3 +122,45 @@ class MaxViTBlock(nn.Module):
         x = x + self.grid_mlp(x)
 
         return x
+
+
+class MaxViT(nn.Module):
+    def __init__(self, stem_dim: int, n_blocks: list[int], dims: list[int], dropout: float = 0.0):
+        super().__init__()
+        self.stem = nn.Sequential(
+            conv_norm_act(3, stem_dim, 3, 2),
+            nn.Conv2d(stem_dim, stem_dim, 3, 1, 1),
+        )
+        in_dim = stem_dim
+
+        self.blocks = nn.Sequential()
+        for n_block, dim in zip(n_blocks, dims):
+            block = nn.Sequential()
+            for i in range(n_block):
+                block.append(MaxViTBlock(in_dim, dim, stride=2 if i == 0 else 1, dropout=dropout))
+                in_dim = dim
+            self.blocks.append(block)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.stem(x).permute(0, 2, 3, 1)
+        for block in self.blocks:
+            x = block(x)
+        return x
+
+    @staticmethod
+    def from_google(variant: str, *, pretrained: bool = False, **kwargs) -> "MaxViT":
+        # table 1
+        stem_dim, n_blocks, dims = dict(
+            tiny=(64, [2, 2, 5, 2], [64, 128, 256, 512]),
+            small=(64, [2, 2, 5, 2], [96, 192, 384, 768]),
+            base=(64, [2, 6, 14, 2], [96, 192, 384, 768]),
+            large=(128, [2, 6, 14, 2], [128, 256, 512, 1024]),
+            xlarge=(192, [2, 6, 14, 2], [192, 384, 768, 1536]),
+        )[variant]
+
+        m = MaxViT(stem_dim, n_blocks, dims, **kwargs)
+
+        if pretrained:
+            pass
+
+        return m
