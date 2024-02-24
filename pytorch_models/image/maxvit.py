@@ -4,7 +4,7 @@
 import torch
 from torch import Tensor, nn
 
-from ..transformer import MHA
+from ..transformer import MHA, MLP
 
 
 def conv_norm_act(in_dim: int, out_dim: int, kernel_size: int, stride: int = 1, groups: int = 1) -> nn.Sequential:
@@ -44,10 +44,7 @@ class MBConv(nn.Module):
         )
 
         if stride > 1:
-            self.skip = nn.Sequential(
-                nn.AvgPool2d(stride),
-                nn.Conv2d(in_dim, out_dim, 1),
-            )
+            self.skip = nn.Sequential(nn.AvgPool2d(stride), nn.Conv2d(in_dim, out_dim, 1))
         else:
             self.skip = nn.Identity()
 
@@ -55,15 +52,17 @@ class MBConv(nn.Module):
         return self.skip(x) + self.residual(x)
 
 
-# (*, H/sizeh, sizeh, W, C)
-# (*, H/sizeh, sizeh, W/sizew, sizew, C)
-# (*, H/sizeh, W/sizew, sizeh, sizew, C)
 def block(x: Tensor, size: int) -> Tensor:
-    return x.unflatten(-3, (-1, size)).unflatten(-2, (-1, size)).transpose(-3, -4)
+    N, H, W, C = x.shape
+    nH = H // size
+    nW = W // size
+    x = x.view(N, nH, size, nW, size, C).transpose(2, 3).reshape(N, nH * nW, size * size, C)
+    return x, nH, nW
 
 
-def unblock(x: Tensor) -> Tensor:
-    return x.transpose(-3, -4).flatten(-5, -4).flatten(-3, -2)
+def unblock(x: Tensor, nH: int, nW: int, size: int) -> Tensor:
+    N, _, _, C = x.shape
+    return x.view(N, nH, nW, size, size, C).transpose(2, 3).reshape(N, nH * size, nW * size, C)
 
 
 # similar to MobileViT's unfold
@@ -71,25 +70,18 @@ def grid(x: Tensor, size: int) -> Tensor:
     N, H, W, C = x.shape
     nH = H // size
     nW = W // size
-    return x.view(N, size, nH, size, nW, C).permute(0, 2, 4, 1, 3, 5)
+    x = x.view(N, size, nH, size, nW, C).permute(0, 2, 4, 1, 3, 5).reshape(N, nH * nW, size * size, C)
+    return x, nH, nW
 
 
-def ungrid(x: Tensor) -> Tensor:
-    N, nH, nW, sizeH, sizeW, C = x.shape
-    return x.permute(0, 3, 1, 4, 2, 5).reshape(N, nH * sizeH, nW * sizeW, C)
+def ungrid(x: Tensor, nH: int, nW: int, size: int) -> Tensor:
+    N, _, _, C = x.shape
+    return x.view(N, nH, nW, size, size, C).permute(0, 3, 1, 4, 2, 5).reshape(N, size * nH, size * nW, C)
 
 
 class RelativeMHA(MHA):
-    def __init__(
-        self,
-        input_size: int,
-        d_model: int,
-        n_heads: int | None = None,
-        head_dim: int | None = None,
-        bias: bool = True,
-        dropout: float = 0.0,
-    ) -> None:
-        super().__init__(d_model, n_heads, head_dim, bias, dropout)
+    def __init__(self, input_size: int, d_model: int, dropout: float = 0.0) -> None:
+        super().__init__(d_model, head_dim=32, dropout=dropout)
         relative_size = 2 * input_size - 1  # [-(input_size - 1), input_size - 1]
         self.attn_bias = nn.Parameter(torch.zeros(self.n_heads, relative_size, relative_size))
 
@@ -107,4 +99,26 @@ class RelativeMHA(MHA):
 
 
 class MaxViTBlock(nn.Module):
-    pass
+    def __init__(self, in_dim: int, out_dim: int, stride: int = 1, window_size: int = 7, dropout: float = 0.0) -> None:
+        super().__init__()
+        self.mbconv = MBConv(in_dim, out_dim, stride)
+        self.block_sa = RelativeMHA(window_size, out_dim, dropout)
+        self.block_mlp = MLP(out_dim, out_dim * 4, dropout)
+        self.grid_sa = RelativeMHA(window_size, out_dim, dropout)
+        self.grid_mlp = MLP(out_dim, out_dim * 4, dropout)
+        self.window_size = window_size
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.mbconv(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+
+        x, nH, nW = block(x, self.window_size)
+        x = x + self.block_sa(x)
+        x = unblock(x, nH, nW, self.window_size)
+        x = x + self.block_mlp(x)
+
+        x, nH, nW = grid(x, self.window_size)
+        x = x + self.grid_sa(x)
+        x = ungrid(x, nH, nW, self.window_size)
+        x = x + self.grid_mlp(x)
+
+        return x
