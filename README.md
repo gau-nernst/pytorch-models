@@ -33,6 +33,8 @@ Available models:
   - [`gsam`](https://arxiv.org/abs/2203.08065) weights: S/32, S/16, S/8, B/32, B/16
 - [MobileViT](https://arxiv.org/abs/2110.02178): xxs, xs, and s
 - [ConvNeXt](https://arxiv.org/abs/2201.03545): tiny, small, base, large, xlarge
+- [MaxViT](https://arxiv.org/abs/2204.01697): tiny, small, base, large, xlarge
+  - Architecture: MBConv (MobileNet block) + local window attention + grid attention (like MobileViT)
 - [DETR](https://arxiv.org/abs/2005.12872)
   - Architecture: ResNet + Transformer Encoder-Decoder (no causal attention in Decoder, so more like Encoder with cross-attention)
   - Weights: R50, R101 (don't support DC5 checkpoints)
