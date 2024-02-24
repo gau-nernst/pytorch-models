@@ -12,7 +12,7 @@ def conv_norm_act(in_dim: int, out_dim: int, kernel_size: int, stride: int = 1, 
     return nn.Sequential(
         nn.Conv2d(in_dim, out_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=groups, bias=False),
         nn.BatchNorm2d(out_dim, eps=1e-3, momentum=0.01),
-        nn.GELU(),
+        nn.GELU(approximate="tanh"),
     )
 
 
@@ -106,7 +106,7 @@ class EncoderLayer(nn.Module):
         self.sa_norm = nn.LayerNorm(d_model, 1e-5)
         self.sa = RelativeMHA(window_size, d_model, dropout)
         self.mlp_norm = nn.LayerNorm(d_model, 1e-5)
-        self.mlp = MLP(d_model, d_model * 4, dropout)
+        self.mlp = MLP(d_model, d_model * 4, dropout, act="approximate_gelu")
 
     def forward(self, x: Tensor) -> Tensor:
         x = x + self.sa(self.sa_norm(x))
