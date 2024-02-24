@@ -5,6 +5,7 @@ import torch
 from torch import Tensor, nn
 
 from ..transformer import MHA, MLP
+from ..utils import torch_hub_download
 
 
 def conv_norm_act(in_dim: int, out_dim: int, kernel_size: int, stride: int = 1, groups: int = 1) -> nn.Sequential:
@@ -19,9 +20,9 @@ class SqueezeExcitation(nn.Sequential):
     def __init__(self, dim: int) -> None:
         super().__init__(
             nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(dim, dim // 4, 1),
+            nn.Conv2d(dim, dim // 16, 1),
             nn.SiLU(),
-            nn.Conv2d(dim // 4, dim, 1),
+            nn.Conv2d(dim // 16, dim, 1),
             nn.Sigmoid(),
         )
 
@@ -34,7 +35,7 @@ class SqueezeExcitation(nn.Sequential):
 class MBConv(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, stride: int = 1) -> None:
         super().__init__()
-        hidden_dim = in_dim * 4
+        hidden_dim = out_dim * 4
         self.residual = nn.Sequential(
             nn.BatchNorm2d(in_dim),
             conv_norm_act(in_dim, hidden_dim, 1),
@@ -43,13 +44,14 @@ class MBConv(nn.Module):
             nn.Conv2d(hidden_dim, out_dim, 1),
         )
 
+        self.shortcut = nn.Sequential()
         if stride > 1:
-            self.skip = nn.Sequential(nn.AvgPool2d(stride), nn.Conv2d(in_dim, out_dim, 1))
-        else:
-            self.skip = nn.Identity()
+            self.shortcut.append(nn.AvgPool2d(stride))
+        if out_dim != in_dim:
+            self.shortcut.append(nn.Conv2d(in_dim, out_dim, 1))
 
     def forward(self, x: Tensor) -> Tensor:
-        return self.skip(x) + self.residual(x)
+        return self.shortcut(x) + self.residual(x)
 
 
 def block(x: Tensor, size: int) -> Tensor:
@@ -98,28 +100,38 @@ class RelativeMHA(MHA):
         return super().forward(x, attn_bias=bias)
 
 
+class EncoderLayer(nn.Module):
+    def __init__(self, d_model: int, window_size: int, dropout: float = 0.0) -> None:
+        super().__init__()
+        self.sa_norm = nn.LayerNorm(d_model, 1e-5)
+        self.sa = RelativeMHA(window_size, d_model, dropout)
+        self.mlp_norm = nn.LayerNorm(d_model, 1e-5)
+        self.mlp = MLP(d_model, d_model * 4, dropout)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = x + self.sa(self.sa_norm(x))
+        x = x + self.mlp(self.mlp_norm(x))
+        return x
+
+
 class MaxViTBlock(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, stride: int = 1, window_size: int = 7, dropout: float = 0.0) -> None:
         super().__init__()
         self.mbconv = MBConv(in_dim, out_dim, stride)
-        self.block_sa = RelativeMHA(window_size, out_dim, dropout)
-        self.block_mlp = MLP(out_dim, out_dim * 4, dropout)
-        self.grid_sa = RelativeMHA(window_size, out_dim, dropout)
-        self.grid_mlp = MLP(out_dim, out_dim * 4, dropout)
+        self.block_layer = EncoderLayer(out_dim, window_size, dropout)
+        self.grid_layer = EncoderLayer(out_dim, window_size, dropout)
         self.window_size = window_size
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.mbconv(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
 
         x, nH, nW = block(x, self.window_size)
-        x = x + self.block_sa(x)
+        x = self.block_layer(x)
         x = unblock(x, nH, nW, self.window_size)
-        x = x + self.block_mlp(x)
 
         x, nH, nW = grid(x, self.window_size)
-        x = x + self.grid_sa(x)
+        x = self.grid_layer(x)
         x = ungrid(x, nH, nW, self.window_size)
-        x = x + self.grid_mlp(x)
 
         return x
 
@@ -133,19 +145,21 @@ class MaxViT(nn.Module):
         )
         in_dim = stem_dim
 
-        self.blocks = nn.Sequential()
+        self.stages = nn.Sequential()
         for n_block, dim in zip(n_blocks, dims):
-            block = nn.Sequential()
+            stage = nn.Sequential()
             for i in range(n_block):
-                block.append(MaxViTBlock(in_dim, dim, stride=2 if i == 0 else 1, dropout=dropout))
+                stage.append(MaxViTBlock(in_dim, dim, stride=2 if i == 0 else 1, dropout=dropout))
                 in_dim = dim
-            self.blocks.append(block)
+            self.stages.append(stage)
+
+        self.norm = nn.LayerNorm(in_dim, 1e-5)
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.stem(x).permute(0, 2, 3, 1)
-        for block in self.blocks:
-            x = block(x)
-        return x
+        for stage in self.stages:
+            x = stage(x)
+        return self.norm(x.mean((1, 2)))
 
     @staticmethod
     def from_google(variant: str, *, pretrained: bool = False, **kwargs) -> "MaxViT":
@@ -161,6 +175,89 @@ class MaxViT(nn.Module):
         m = MaxViT(stem_dim, n_blocks, dims, **kwargs)
 
         if pretrained:
-            pass
+            import tensorflow as tf
+
+            if variant in ("tiny", "small"):
+                ds = "i1k"
+                step = 92002
+            else:
+                ds = "i21k_pt"
+                step = 279498
+
+            url = f"https://storage.googleapis.com/gresearch/maxvit/ckpts/maxvit{variant}/{ds}/224/model.ckpt-{step}"
+            torch_hub_download(f"{url}.data-00000-of-00001", f"maxvit_{variant}")
+            ckpt_path = torch_hub_download(f"{url}.index", f"maxvit_{variant}").removesuffix(".index")
+
+            reader = tf.train.load_checkpoint(ckpt_path)
+            m.load_google_state_dict(reader)
 
         return m
+
+    @torch.no_grad()
+    def load_google_state_dict(self, reader) -> None:
+        keys = set(
+            x
+            for x in reader.get_variable_to_shape_map().keys()
+            if not x.endswith(("ExponentialMovingAverage", "adam_m", "adam_v"))
+        )
+
+        def get_param(name: str):
+            name = f"maxvit/{name}"
+            keys.remove(name)
+            return torch.from_numpy(reader.get_tensor(name))
+
+        def load_conv2d(module: nn.Conv2d, prefix: str, depthwise: bool = False):
+            if depthwise:
+                module.weight.copy_(get_param(f"{prefix}/depthwise_kernel").permute(2, 3, 0, 1))
+            else:
+                module.weight.copy_(get_param(f"{prefix}/kernel").permute(3, 2, 0, 1))
+            if module.bias is not None:
+                module.bias.copy_(get_param(f"{prefix}/bias"))
+
+        def load_linear(module: nn.Linear, prefix: str, flatten: int | None = None):
+            weight = get_param(f"{prefix}/weight")
+            if flatten is not None:
+                weight = weight.flatten(flatten, flatten + 1)
+            module.weight.copy_(weight.T)
+            module.bias.copy_(get_param(f"{prefix}/bias").flatten())
+
+        def load_norm(module: nn.LayerNorm | nn.BatchNorm2d, prefix: str):
+            module.weight.copy_(get_param(f"{prefix}/gamma"))
+            module.bias.copy_(get_param(f"{prefix}/beta"))
+
+            if isinstance(module, nn.BatchNorm2d):
+                module.running_mean.copy_(get_param(f"{prefix}/moving_mean"))
+                module.running_var.copy_(get_param(f"{prefix}/moving_variance"))
+
+        load_conv2d(self.stem[0][0], "stem/conv_0")
+        load_norm(self.stem[0][1], "stem/norm_0")
+        load_conv2d(self.stem[1], "stem/conv_1")
+
+        for stage_idx, stage in enumerate(self.stages):
+            for block_idx, block in enumerate(stage):
+                prefix = f"block_{stage_idx:02d}_{block_idx:02d}"
+
+                load_norm(block.mbconv.residual[0], f"{prefix}/mbconv/pre_norm")
+                load_conv2d(block.mbconv.residual[1][0], f"{prefix}/mbconv/expand_conv")
+                load_norm(block.mbconv.residual[1][1], f"{prefix}/mbconv/expand_norm")
+                load_conv2d(block.mbconv.residual[2][0], f"{prefix}/mbconv/depthwise_conv", depthwise=True)
+                load_norm(block.mbconv.residual[2][1], f"{prefix}/mbconv/depthwise_norm")
+                load_conv2d(block.mbconv.residual[3][1], f"{prefix}/mbconv/se/reduce_conv2d")
+                load_conv2d(block.mbconv.residual[3][3], f"{prefix}/mbconv/se/expand_conv2d")
+                load_conv2d(block.mbconv.residual[4], f"{prefix}/mbconv/shrink_conv")
+                if len(block.mbconv.shortcut) == 2:
+                    load_conv2d(block.mbconv.shortcut[1], f"{prefix}/mbconv/shortcut_conv")
+
+                for layer, suffix in [(block.block_layer, ""), (block.grid_layer, "_1")]:
+                    load_norm(layer.sa_norm, f"{prefix}/attn_layer_norm{suffix}")
+                    layer.sa.attn_bias.copy_(get_param(f"{prefix}/attention{suffix}/relative_bias"))
+                    load_linear(layer.sa.q_proj, f"{prefix}/attention{suffix}/q", 1)
+                    load_linear(layer.sa.k_proj, f"{prefix}/attention{suffix}/k", 1)
+                    load_linear(layer.sa.v_proj, f"{prefix}/attention{suffix}/v", 1)
+                    load_linear(layer.sa.out_proj, f"{prefix}/attention{suffix}/o", 0)
+
+                    load_norm(layer.mlp_norm, f"{prefix}/ffn_layer_norm{suffix}")
+                    load_linear(layer.mlp.linear1, f"{prefix}/ffn{suffix}/expand_dense")
+                    load_linear(layer.mlp.linear2, f"{prefix}/ffn{suffix}/shrink_dense")
+
+        load_norm(self.norm, "final_layer_norm")
