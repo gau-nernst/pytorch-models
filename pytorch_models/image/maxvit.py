@@ -1,24 +1,27 @@
 # https://arxiv.org/pdf/2204.01697.pdf
 # https://github.com/google-research/maxvit
 
-from torch import nn, Tensor
+import torch
+from torch import Tensor, nn
+
+from ..transformer import MHA
 
 
-class conv_norm_act(in_dim: int, out_dim: int, kernel_size: int, stride: int = 1, groups: int = 1) -> nn.Sequential:
+def conv_norm_act(in_dim: int, out_dim: int, kernel_size: int, stride: int = 1, groups: int = 1) -> nn.Sequential:
     return nn.Sequential(
         nn.Conv2d(in_dim, out_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=groups, bias=False),
-        nn.BatchNorm2d(out_dim),
+        nn.BatchNorm2d(out_dim, eps=1e-3, momentum=0.01),
         nn.GELU(),
     )
 
 
 class SqueezeExcitation(nn.Sequential):
-    def __init__(self, in_dim: int) -> None:
+    def __init__(self, dim: int) -> None:
         super().__init__(
             nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(in_dim, in_dim // 4, 1),
+            nn.Conv2d(dim, dim // 4, 1),
             nn.SiLU(),
-            nn.Conv2d(in_dim // 4, in_dim, 1),
+            nn.Conv2d(dim // 4, dim, 1),
             nn.Sigmoid(),
         )
 
@@ -27,6 +30,7 @@ class SqueezeExcitation(nn.Sequential):
 
 
 # pre-norm MBConv
+# NOTE: we don't include stochastic depth
 class MBConv(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, stride: int = 1) -> None:
         super().__init__()
@@ -38,7 +42,7 @@ class MBConv(nn.Module):
             SqueezeExcitation(hidden_dim),
             nn.Conv2d(hidden_dim, out_dim, 1),
         )
-        
+
         if stride > 1:
             self.skip = nn.Sequential(
                 nn.AvgPool2d(stride),
@@ -46,7 +50,7 @@ class MBConv(nn.Module):
             )
         else:
             self.skip = nn.Identity()
-    
+
     def forward(self, x: Tensor) -> Tensor:
         return self.skip(x) + self.residual(x)
 
@@ -55,15 +59,52 @@ class MBConv(nn.Module):
 # (*, H/sizeh, sizeh, W/sizew, sizew, C)
 # (*, H/sizeh, W/sizew, sizeh, sizew, C)
 def block(x: Tensor, size: int) -> Tensor:
-    return x.unflatten(-3, (-1, size)).unflatten(-2, (-1, size)).transpose(-3, -4)  
+    return x.unflatten(-3, (-1, size)).unflatten(-2, (-1, size)).transpose(-3, -4)
 
 
 def unblock(x: Tensor) -> Tensor:
     return x.transpose(-3, -4).flatten(-5, -4).flatten(-3, -2)
 
 
-# (*, sizeh, H/sizeh, W, C)
-# (*, sizeh, H/sizeh, sizew, W/sizew, C)
-# (*, H/sizeh, W/sizew, sizeh, sizew, C)
+# similar to MobileViT's unfold
 def grid(x: Tensor, size: int) -> Tensor:
-    return x.unflatten(-3, (size, -1)).unflatten(-2, (size, -1)).transpose()
+    N, H, W, C = x.shape
+    nH = H // size
+    nW = W // size
+    return x.view(N, size, nH, size, nW, C).permute(0, 2, 4, 1, 3, 5)
+
+
+def ungrid(x: Tensor) -> Tensor:
+    N, nH, nW, sizeH, sizeW, C = x.shape
+    return x.permute(0, 3, 1, 4, 2, 5).reshape(N, nH * sizeH, nW * sizeW, C)
+
+
+class RelativeMHA(MHA):
+    def __init__(
+        self,
+        input_size: int,
+        d_model: int,
+        n_heads: int | None = None,
+        head_dim: int | None = None,
+        bias: bool = True,
+        dropout: float = 0.0,
+    ) -> None:
+        super().__init__(d_model, n_heads, head_dim, bias, dropout)
+        relative_size = 2 * input_size - 1  # [-(input_size - 1), input_size - 1]
+        self.attn_bias = nn.Parameter(torch.zeros(self.n_heads, relative_size, relative_size))
+
+        index = torch.empty(input_size, input_size, dtype=torch.long)
+        for i in range(input_size):
+            for j in range(input_size):
+                index[i][j] = j - i + input_size - 1
+        self.register_buffer("bias_index", index.view(-1), persistent=False)
+        self.bias_index: Tensor
+
+    def forward(self, x: Tensor) -> Tensor:
+        bias = self.attn_bias[:, self.bias_index]
+        bias = bias[:, :, self.bias_index]
+        return super().forward(x, attn_bias=bias)
+
+
+class MaxViTBlock(nn.Module):
+    pass
